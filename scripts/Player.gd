@@ -12,12 +12,21 @@ var _spring_arm: SpringArm3D
 var _camera: Camera3D
 var _yaw := 0.0
 var _pitch := -10.0
+var _touch: TouchControls
+var _is_mobile := false
 
 func _ready() -> void:
 	add_to_group("player")
 	_build_visual()
 	_build_camera_rig()
-	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	_is_mobile = OS.has_feature("mobile")
+	if _is_mobile:
+		# No physical keyboard/mouse on a phone: add the on-screen joystick,
+		# look-drag region, and jump button instead of capturing a cursor.
+		_touch = TouchControls.new()
+		add_child(_touch)
+	else:
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 
 func _build_visual() -> void:
@@ -78,6 +87,14 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if _touch:
+		var look := _touch.consume_look_delta()
+		if look != Vector2.ZERO:
+			_yaw -= look.x * MOUSE_SENSITIVITY
+			_pitch = clamp(_pitch - look.y * MOUSE_SENSITIVITY, -60, 20)
+			rotation_degrees.y = _yaw
+			_spring_arm.rotation_degrees.x = _pitch
+
 	if not is_on_floor():
 		velocity.y -= GRAVITY * delta
 	else:
@@ -93,14 +110,18 @@ func _physics_process(delta: float) -> void:
 		input_dir.x -= 1
 	if Input.is_key_pressed(KEY_D):
 		input_dir.x += 1
-	input_dir = input_dir.normalized()
+	if _touch:
+		input_dir += _touch.move_vector
+	input_dir = input_dir.limit_length(1.0)
 
 	var speed := SPRINT_SPEED if Input.is_key_pressed(KEY_SHIFT) else SPEED
-	var dir := (transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
+	var move_dir3 := transform.basis * Vector3(input_dir.x, 0, input_dir.y)
 
-	if dir.length() > 0:
-		velocity.x = dir.x * speed
-		velocity.z = dir.z * speed
+	if move_dir3.length() > 0.001:
+		var dir := move_dir3.normalized()
+		var throttle := input_dir.length()  # keyboard is always 1.0; a gentle joystick tilt walks instead of runs
+		velocity.x = dir.x * speed * throttle
+		velocity.z = dir.z * speed * throttle
 	else:
 		velocity.x = move_toward(velocity.x, 0, speed)
 		velocity.z = move_toward(velocity.z, 0, speed)

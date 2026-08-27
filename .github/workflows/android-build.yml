@@ -18,6 +18,11 @@ jobs:
     container:
       image: barichello/godot-ci:4.3
 
+    # The godot-ci image bakes its export templates, Android SDK, and a
+    # ready-to-use debug keystore into /root. GitHub Actions normally points
+    # HOME at a different directory for container jobs, which would hide all
+    # of that from Godot -- pinning HOME back to /root is what makes the
+    # export step below "just work" with no extra setup.
     env:
       HOME: /root
 
@@ -27,21 +32,6 @@ jobs:
         with:
           lfs: true
 
-      - name: Prepare Godot export environment
-        shell: bash
-        run: |
-          mkdir -p "$HOME/.local/share/godot/export_templates"
-          mkdir -p "$HOME/.config"
-
-          if [ -d "/root/.config/godot" ] && [ ! -d "$HOME/.config/godot" ]; then
-            cp -a /root/.config/godot "$HOME/.config/"
-          fi
-
-          if [ -d "/root/.local/share/godot/export_templates/4.3.stable" ]; then
-            rm -rf "$HOME/.local/share/godot/export_templates/4.3.stable"
-            cp -a /root/.local/share/godot/export_templates/4.3.stable               "$HOME/.local/share/godot/export_templates/"
-          fi
-
       - name: Check Godot project
         run: |
           godot --version
@@ -49,12 +39,22 @@ jobs:
           test -f export_presets.cfg
           grep -q 'name="Android"' export_presets.cfg
 
+      # On a brand-new checkout there is no .godot/ cache yet, and Godot 4
+      # does not resolve `class_name` scripts (InteriorBuilder, TouchControls)
+      # until that cache has been built once. Skipping this step makes the
+      # very next step fail with "Identifier ... not declared in the current
+      # scope" for every class_name script, which aborts the export.
+      - name: Import project (builds the script/class cache)
+        run: godot --headless --path . --import
+
       - name: Create build directory
         run: mkdir -p build
 
       - name: Export Android debug APK
         run: |
-          godot --headless --verbose             --export-debug "Android"             "build/psp-open-world-debug.apk"
+          godot --headless --verbose \
+            --export-debug "Android" \
+            "build/psp-open-world-debug.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

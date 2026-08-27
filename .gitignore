@@ -1,0 +1,8 @@
+# Godot 4+ generated cache/import files -- do not commit these.
+# The CI workflow rebuilds this itself (see WORKFLOW_FIXES.md); a stale or
+# machine-specific copy checked into git can shadow that fresh rebuild.
+.godot/
+
+# Local export output
+build/
+*.apk

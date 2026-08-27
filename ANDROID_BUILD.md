@@ -25,9 +25,21 @@ tools installed — you don't need to install anything locally.
    push, or click **"Run workflow"** to trigger it manually).
 3. Once it finishes (green check), scroll to the **Artifacts** section at the
    bottom of the run page and download **psp-open-world-debug-apk**.
-4. Unzip it — you'll get `psp_game.apk`. Install it on an Android device
-   (you'll need to allow "install from unknown sources" since it's unsigned
-   for release/Play Store) or drag it into an Android emulator.
+4. Unzip it — you'll get `psp-open-world-debug.apk`. Install it on an
+   Android device (you'll need to allow "install from unknown sources" since
+   it's unsigned for release/Play Store) or drag it into an Android
+   emulator.
+
+## Controls on the phone
+
+The screen has three touch regions:
+- **Bottom-left**: a virtual joystick — walk with a light tilt, run with a
+  full tilt.
+- **Right ~65% of the screen**: drag anywhere to look around.
+- **Bottom-right**: tap-and-hold to jump.
+
+Keyboard + mouse still work as before for anyone testing in the desktop
+editor or a PC export.
 
 ## Notes / limits
 

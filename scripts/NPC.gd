@@ -13,10 +13,11 @@ const GRAVITY := 18.0
 
 enum State { AT_HOME, GOING_TO_WORK, AT_WORK, GOING_HOME }
 var _state := State.AT_HOME
-var _elapsed := randf() * 120.0  # stagger NPCs so they're not all synced
+var _elapsed: float = 0.0  # stagger NPCs so they're not all synced
 
 
 func _ready() -> void:
+	_elapsed = randf() * day_length
 	add_to_group("npc")
 	_build_visual()
 	global_position = home_pos

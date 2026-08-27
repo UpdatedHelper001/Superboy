@@ -39,6 +39,17 @@ static func _add_floor(room: Node3D, size: Vector2) -> void:
 	mi.mesh = mesh
 	room.add_child(mi)
 
+	# Give the generated floor a physics surface so the player does not fall through.
+	var body := StaticBody3D.new()
+	body.name = "FloorBody"
+	var col := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(size.x, 0.2, size.y)
+	col.shape = shape
+	col.position.y = -0.1
+	body.add_child(col)
+	room.add_child(body)
+
 
 static func _add_walls(room: Node3D, size: Vector2, height: float) -> void:
 	var mat := StandardMaterial3D.new()

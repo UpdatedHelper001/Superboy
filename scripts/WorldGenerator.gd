@@ -213,6 +213,7 @@ func _add_door_and_interior(structure: StaticBody3D, kind: String, exterior_pos:
 	shape.size = Vector3(1.5, 2, 1.5)
 	col.shape = shape
 	entry_door.add_child(col)
+	entry_door.monitoring = true
 	entry_door.position = Vector3(0, 1, size.z / 2.0 + 0.75)
 	structure.add_child(entry_door)
 
@@ -299,6 +300,7 @@ func _add_classrooms(hall_interior: Node3D) -> void:
 		shape.size = Vector3(1.5, 2, 1.0)
 		col.shape = shape
 		hall_door.add_child(col)
+		hall_door.monitoring = true
 		hall_door.position = Vector3(door_x, 1, -hall_size.y / 2.0 + 0.5)
 		hall_interior.add_child(hall_door)
 

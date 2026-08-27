@@ -1,0 +1,45 @@
+name: Build Android APK
+
+# Runs on every push to main, and can also be triggered manually from the
+# Actions tab (Run workflow button).
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    name: Export debug APK
+    runs-on: ubuntu-latest
+    # This image bundles Godot 4.3 + export templates + Android build tools,
+    # so no separate SDK/template setup is needed.
+    container:
+      image: barichello/godot-ci:4.3
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Generate debug keystore
+        run: |
+          mkdir -p ~/.android
+          keytool -genkey -v \
+            -keystore ~/.android/debug.keystore \
+            -storepass android -alias androiddebugkey \
+            -keypass android -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+
+      - name: Create build output folder
+        run: mkdir -v -p build
+
+      - name: Import project (generates .godot cache Godot needs before export)
+        run: godot --headless --verbose --export-debug "Android" build/psp_game.apk --editor --quit || true
+
+      - name: Export debug APK
+        run: godot --headless --verbose --export-debug "Android" build/psp_game.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: psp-open-world-debug-apk
+          path: build/psp_game.apk

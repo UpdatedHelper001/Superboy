@@ -39,6 +39,13 @@ jobs:
       - name: Create build output folder
         run: mkdir -v -p build
 
+      - name: Install matching Android build-tools
+        run: |
+          SDKMANAGER=$(find / -iname "sdkmanager" -not -path "*/build-tools/*" 2>/dev/null | head -n1)
+          echo "Using sdkmanager at: $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0"
+
       - name: Export debug APK
         run: godot --headless --verbose --export-debug "Android" build/psp_game.apk
 

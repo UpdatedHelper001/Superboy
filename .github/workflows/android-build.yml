@@ -12,9 +12,16 @@ jobs:
     name: Export debug APK
     runs-on: ubuntu-latest
     # This image bundles Godot 4.3 + export templates + Android build tools,
-    # so no separate SDK/template setup is needed.
+    # pre-configured under the image's /root home directory.
     container:
       image: barichello/godot-ci:4.3
+    env:
+      # GitHub Actions containers default HOME to /github/home, which hides
+      # the export templates, Java/Android SDK paths, and editor settings
+      # that this image already has set up under /root. Without this, export
+      # fails with "No export template found" / "valid Java SDK path required"
+      # even though the image has everything installed.
+      HOME: /root
 
     steps:
       - name: Checkout project
@@ -22,18 +29,15 @@ jobs:
 
       - name: Generate debug keystore
         run: |
-          mkdir -p ~/.android
+          mkdir -p "$HOME/.android"
           keytool -genkey -v \
-            -keystore ~/.android/debug.keystore \
+            -keystore "$HOME/.android/debug.keystore" \
             -storepass android -alias androiddebugkey \
             -keypass android -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
 
       - name: Create build output folder
         run: mkdir -v -p build
-
-      - name: Import project (generates .godot cache Godot needs before export)
-        run: godot --headless --verbose --export-debug "Android" build/psp_game.apk --editor --quit || true
 
       - name: Export debug APK
         run: godot --headless --verbose --export-debug "Android" build/psp_game.apk

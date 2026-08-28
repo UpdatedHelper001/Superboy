@@ -50,6 +50,20 @@ jobs:
       - name: Create build directory
         run: mkdir -p build
 
+      # Non-Gradle export (gradle_build/use_gradle_build=false) can't have its
+      # target SDK overridden in export_presets.cfg -- Godot rejects that with
+      # "Target SDK can only be overridden when Use Gradle Build is enabled."
+      # So instead of changing the target, we widen what's available locally:
+      # the image only ships build-tools;33.0.2, but Godot 4.3's precompiled
+      # template targets SDK 34 (confirmed directly from its AndroidManifest
+      # and from platform/android/export/export_plugin.cpp's
+      # DEFAULT_TARGET_SDK_VERSION), so the export fails its configuration
+      # check without a matching build-tools version available locally.
+      - name: Install additional Android build-tools
+        run: |
+          yes | sdkmanager --sdk_root=/usr/lib/android-sdk \
+            "build-tools;34.0.0" "platforms;android-34"
+
       - name: Export Android debug APK
         run: |
           godot --headless --verbose \

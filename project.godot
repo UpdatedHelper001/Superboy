@@ -7,6 +7,7 @@ config_version=5
 [application]
 
 config/name="PSP Open World"
+config/icon="res://icons/icon_192.png"
 run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.3", "GL Compatibility")
 
@@ -20,6 +21,7 @@ stretch/mode="canvas_items"
 [rendering]
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true
 
 [input_devices]
 pointing/emulate_mouse_from_touch=false

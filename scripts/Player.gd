@@ -14,6 +14,8 @@ var _yaw := 0.0
 var _pitch := -10.0
 var _touch: TouchControls
 var _is_mobile := false
+var _rig := CharacterRig.new()
+
 
 func _ready() -> void:
 	add_to_group("player")
@@ -30,7 +32,6 @@ func _ready() -> void:
 
 
 func _build_visual() -> void:
-	# Collision capsule
 	var col := CollisionShape3D.new()
 	var shape := CapsuleShape3D.new()
 	shape.radius = 0.4
@@ -39,28 +40,32 @@ func _build_visual() -> void:
 	col.position.y = 0.85
 	add_child(col)
 
-	# Simple low-poly "Joseph" body: torso + head, school-uniform colors
-	var torso := MeshInstance3D.new()
-	var torso_mesh := CapsuleMesh.new()
-	torso_mesh.radius = 0.35
-	torso_mesh.height = 1.3
-	var torso_mat := StandardMaterial3D.new()
-	torso_mat.albedo_color = Color(0.15, 0.25, 0.55)  # school uniform blue
-	torso_mesh.material = torso_mat
-	torso.mesh = torso_mesh
-	torso.position.y = 0.85
-	add_child(torso)
+	# Low-poly "Joseph" body: articulated legs/arms + torso + head, school-uniform colors.
+	_rig.leg_swing_max = 0.7
+	_rig.arm_swing_max = 0.55
+	_rig.anim_speed = 6.5
+	_rig.build(self, {
+		"hip_x": 0.16, "hip_y": 0.9, "leg_len": 0.9, "leg_r": 0.12, "leg_color": Color(0.2, 0.2, 0.25),
+		"shoulder_x": 0.42, "shoulder_y": 1.5, "arm_len": 0.7, "arm_r": 0.09, "arm_color": Color(0.15, 0.25, 0.55),
+		"torso_r": 0.35, "torso_h": 0.8, "torso_y": 1.3, "torso_color": Color(0.15, 0.25, 0.55),
+		"head_r": 0.25, "head_y": 1.95, "head_color": Color(0.85, 0.7, 0.55),
+		"hair_color": Color(0.25, 0.16, 0.1),
+	})
+	_add_backpack()
 
-	var head := MeshInstance3D.new()
-	var head_mesh := SphereMesh.new()
-	head_mesh.radius = 0.25
-	head_mesh.height = 0.5
-	var head_mat := StandardMaterial3D.new()
-	head_mat.albedo_color = Color(0.85, 0.7, 0.55)  # skin tone
-	head_mesh.material = head_mat
-	head.mesh = head_mesh
-	head.position.y = 1.65
-	add_child(head)
+
+## A small backpack on Joseph's back so he reads as the protagonist among a
+## crowd of NPCs sharing the same low-poly rig.
+func _add_backpack() -> void:
+	var pack := MeshInstance3D.new()
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.32, 0.4, 0.18)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.8, 0.2, 0.15)
+	mesh.material = mat
+	pack.mesh = mesh
+	pack.position = Vector3(0, 1.35, -0.28)
+	add_child(pack)
 
 
 func _build_camera_rig() -> void:
@@ -127,6 +132,9 @@ func _physics_process(delta: float) -> void:
 		velocity.z = move_toward(velocity.z, 0, speed)
 
 	move_and_slide()
+
+	var h_speed := Vector2(velocity.x, velocity.z).length()
+	_rig.update_walk(delta, h_speed / SPRINT_SPEED)
 
 
 ## Called by WorldGenerator to teleport Joseph (e.g. entering/exiting a door).

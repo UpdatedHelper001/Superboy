@@ -20,13 +20,19 @@ static func build_interior(kind: String) -> Node3D:
 		"school_hall":
 			room_size = Vector2(20, 8)
 
+	var height := 4.0
 	_add_floor(room, room_size)
-	_add_walls(room, room_size, 4.0)
+	_add_walls(room, room_size, height)
 	_add_light(room)
 	_add_furniture(room, kind, room_size)
-	_add_exit_door(room)
+	_add_exit_door(room, room_size, height)
 
 	return room
+
+
+const DOOR_WIDTH := 2.0
+const DOOR_HEIGHT := 2.3
+const WALL_THICKNESS := 0.3
 
 
 static func _add_floor(room: Node3D, size: Vector2) -> void:
@@ -54,12 +60,17 @@ static func _add_floor(room: Node3D, size: Vector2) -> void:
 static func _add_walls(room: Node3D, size: Vector2, height: float) -> void:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color(0.85, 0.83, 0.78)
+	var door_h: float = min(DOOR_HEIGHT, height - 0.3)
+	var side_w := size.x / 2.0 - DOOR_WIDTH / 2.0
 
+	# Back, left, right walls stay solid; the south (door) wall gets a real gap.
 	var configs := [
-		{"pos": Vector3(0, height / 2.0, -size.y / 2.0), "size": Vector3(size.x, height, 0.3)},
-		{"pos": Vector3(0, height / 2.0, size.y / 2.0), "size": Vector3(size.x, height, 0.3)},
-		{"pos": Vector3(-size.x / 2.0, height / 2.0, 0), "size": Vector3(0.3, height, size.y)},
-		{"pos": Vector3(size.x / 2.0, height / 2.0, 0), "size": Vector3(0.3, height, size.y)},
+		{"pos": Vector3(0, height / 2.0, -size.y / 2.0), "size": Vector3(size.x, height, WALL_THICKNESS)},
+		{"pos": Vector3(-size.x / 2.0, height / 2.0, 0), "size": Vector3(WALL_THICKNESS, height, size.y)},
+		{"pos": Vector3(size.x / 2.0, height / 2.0, 0), "size": Vector3(WALL_THICKNESS, height, size.y)},
+		{"pos": Vector3(-DOOR_WIDTH / 2.0 - side_w / 2.0, height / 2.0, size.y / 2.0), "size": Vector3(side_w, height, WALL_THICKNESS)},
+		{"pos": Vector3(DOOR_WIDTH / 2.0 + side_w / 2.0, height / 2.0, size.y / 2.0), "size": Vector3(side_w, height, WALL_THICKNESS)},
+		{"pos": Vector3(0, door_h + (height - door_h) / 2.0, size.y / 2.0), "size": Vector3(DOOR_WIDTH, height - door_h, WALL_THICKNESS)},
 	]
 	for c in configs:
 		var mesh := BoxMesh.new()
@@ -78,6 +89,9 @@ static func _add_walls(room: Node3D, size: Vector2, height: float) -> void:
 		body.position = c["pos"]
 		body.add_child(col)
 		room.add_child(body)
+
+	# Cosmetic door panel in the gap.
+	_box(room, Vector3(0, door_h / 2.0, size.y / 2.0 - 0.05), Vector3(DOOR_WIDTH - 0.3, door_h - 0.15, 0.1), Color(0.32, 0.2, 0.12))
 
 
 static func _add_light(room: Node3D) -> void:
@@ -125,13 +139,14 @@ static func _box(room: Node3D, pos: Vector3, size: Vector3, color: Color) -> voi
 	room.add_child(mi)
 
 
-static func _add_exit_door(room: Node3D) -> void:
+static func _add_exit_door(room: Node3D, size: Vector2, height: float) -> void:
+	var door_h: float = min(DOOR_HEIGHT, height - 0.3)
 	var door := Area3D.new()
 	door.name = "ExitDoor"
 	var col := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
-	shape.size = Vector3(1.5, 2, 1.5)
+	shape.size = Vector3(DOOR_WIDTH - 0.1, door_h, 1.2)
 	col.shape = shape
 	door.add_child(col)
-	door.position = Vector3(0, 1, 3.3)
+	door.position = Vector3(0, door_h / 2.0, size.y / 2.0 - 0.3)
 	room.add_child(door)

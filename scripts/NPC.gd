@@ -14,6 +14,10 @@ const GRAVITY := 18.0
 enum State { AT_HOME, GOING_TO_WORK, AT_WORK, GOING_HOME }
 var _state := State.AT_HOME
 var _elapsed: float = 0.0  # stagger NPCs so they're not all synced
+var _rig := CharacterRig.new()
+
+const SKIN_TONES := [Color(0.85, 0.7, 0.55), Color(0.65, 0.48, 0.35), Color(0.4, 0.28, 0.2), Color(0.93, 0.8, 0.68)]
+const HAIR_COLORS := [Color(0.1, 0.08, 0.06), Color(0.35, 0.22, 0.12), Color(0.6, 0.55, 0.5), Color(0.15, 0.1, 0.08)]
 
 
 func _ready() -> void:
@@ -32,16 +36,17 @@ func _build_visual() -> void:
 	col.position.y = 0.75
 	add_child(col)
 
-	var mesh_inst := MeshInstance3D.new()
-	var mesh := CapsuleMesh.new()
-	mesh.radius = 0.3
-	mesh.height = 1.2
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = role_color
-	mesh.material = mat
-	mesh_inst.mesh = mesh
-	mesh_inst.position.y = 0.75
-	add_child(mesh_inst)
+	var limb_color := role_color.darkened(0.3)
+	_rig.leg_swing_max = 0.6
+	_rig.arm_swing_max = 0.45
+	_rig.anim_speed = 6.0
+	_rig.build(self, {
+		"hip_x": 0.14, "hip_y": 0.78, "leg_len": 0.78, "leg_r": 0.1, "leg_color": limb_color,
+		"shoulder_x": 0.36, "shoulder_y": 1.3, "arm_len": 0.6, "arm_r": 0.08, "arm_color": role_color,
+		"torso_r": 0.3, "torso_h": 0.7, "torso_y": 1.13, "torso_color": role_color,
+		"head_r": 0.22, "head_y": 1.7, "head_color": SKIN_TONES.pick_random(),
+		"hair_color": HAIR_COLORS.pick_random(),
+	})
 
 
 func _physics_process(delta: float) -> void:
@@ -87,3 +92,6 @@ func _physics_process(delta: float) -> void:
 		velocity.z = 0
 
 	move_and_slide()
+
+	var h_speed := Vector2(velocity.x, velocity.z).length()
+	_rig.update_walk(delta, h_speed / SPEED)

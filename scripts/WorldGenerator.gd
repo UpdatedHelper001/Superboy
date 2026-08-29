@@ -18,6 +18,7 @@ var ZONES: Array = []
 
 const PlayerScript := preload("res://scripts/Player.gd")
 const NPCScript := preload("res://scripts/NPC.gd")
+const HUDScript := preload("res://scripts/HUD.gd")
 
 func _ready() -> void:
 	randomize()
@@ -29,6 +30,7 @@ func _ready() -> void:
 	_build_connecting_roads()
 	_build_school()
 	_spawn_npcs()
+	_spawn_ambient_npcs()
 	_spawn_player()
 
 
@@ -228,7 +230,7 @@ func _make_structure(kind: String) -> StaticBody3D:
 	var door_h := _build_door_shell(body, size, color)
 
 	_add_roof_cap(body, size, color)
-	_add_facade_windows(body, kind, size, size.x / 2.0 - DOOR_WIDTH / 2.0, size.x / 2.0, size.z / 2.0)
+	_add_facade_windows(body, kind, size, size.x / 2.0 - DOOR_WIDTH / 2.0, size.z / 2.0)
 	if kind == "shop":
 		_add_shop_awning(body, door_h, size.z / 2.0)
 
@@ -263,21 +265,18 @@ func _add_roof_cap(body: StaticBody3D, size: Vector3, wall_color: Color) -> void
 	_add_box_part(body, Vector3(0, size.y + 0.12, 0), Vector3(size.x + 0.4, 0.24, size.z + 0.4), wall_color.darkened(0.35), false)
 
 
-## Cosmetic window grid on the front pillars (every building) and on the
-## remaining three faces for tall "building" kind, for a lived-in skyscraper look.
-func _add_facade_windows(body: StaticBody3D, kind: String, size: Vector3, side_w: float, half_x: float, half_z: float) -> void:
+## Cosmetic window grid on the front pillars. Deliberately front-face-only
+## (even for tall "building" kind) — with ~150 NPCs now roaming the map on
+## top of every structure's geometry, lighting every face would add
+## thousands of extra mesh nodes for windows most players never see anyway.
+func _add_facade_windows(body: StaticBody3D, kind: String, size: Vector3, side_w: float, half_z: float) -> void:
 	if side_w < 0.6:
 		return
-	var rows := clampi(int(size.y / 3.0), 1, 8)
+	var rows := clampi(int(size.y / 3.0), 1, 6)
 	var cols := 1 if kind == "hut" else 2
 
 	_add_window_grid(body, Vector3(-DOOR_WIDTH / 2.0 - side_w / 2.0, size.y / 2.0, half_z + 0.02), side_w, size.y, "z", cols, rows)
 	_add_window_grid(body, Vector3(DOOR_WIDTH / 2.0 + side_w / 2.0, size.y / 2.0, half_z + 0.02), side_w, size.y, "z", cols, rows)
-
-	if kind == "building":
-		_add_window_grid(body, Vector3(0, size.y / 2.0, -half_z - 0.02), size.x, size.y, "z", cols * 2, rows)
-		_add_window_grid(body, Vector3(-half_x - 0.02, size.y / 2.0, 0), size.z, size.y, "x", cols, rows)
-		_add_window_grid(body, Vector3(half_x + 0.02, size.y / 2.0, 0), size.z, size.y, "x", cols, rows)
 
 
 ## Cosmetic (non-colliding) glass panes laid out in a grid across a face.
@@ -392,7 +391,7 @@ func _build_school() -> void:
 	var color := Color(0.8, 0.65, 0.4)
 	var door_h := _build_door_shell(body, size, color)
 	_add_roof_cap(body, size, color)
-	_add_facade_windows(body, "building", size, size.x / 2.0 - DOOR_WIDTH / 2.0, size.x / 2.0, size.z / 2.0)
+	_add_facade_windows(body, "building", size, size.x / 2.0 - DOOR_WIDTH / 2.0, size.z / 2.0)
 
 	body.set_meta("kind", "school")
 	body.set_meta("size", size)
@@ -494,6 +493,35 @@ func _spawn_npcs() -> void:
 		add_child(npc)
 
 
+## Extra pedestrians with no job — they just drift around their district —
+## so streets, the market, and the park feel lived-in instead of empty
+## between the commuter NPCs' scheduled trips.
+func _spawn_ambient_npcs() -> void:
+	var role_colors := [Color(0.7, 0.6, 0.2), Color(0.2, 0.6, 0.7), Color(0.6, 0.3, 0.6), Color(0.3, 0.7, 0.4), Color(0.8, 0.5, 0.3), Color(0.75, 0.4, 0.25)]
+	# Foot-traffic density per district kind (fraction of that zone's structure count).
+	var density := {"downtown": 0.5, "old_town": 0.5, "beach": 0.4, "residential": 0.2, "industrial": 0.15, "port": 0.15}
+
+	for z in ZONES:
+		var kind: String = z["kind"]
+		var count: int
+		if kind == "park":
+			count = 8  # joggers/walkers even though the park has no workplaces
+		else:
+			count = int(z["count"] * density.get(kind, 0.0))
+		var radius: float = min(z["size"].x, z["size"].y) / 2.0 * 0.75
+
+		for i in range(count):
+			var spawn_pos: Vector3 = z["pos"] + Vector3(randf_range(-radius, radius), 0, randf_range(-radius, radius))
+			var npc := CharacterBody3D.new()
+			npc.set_script(NPCScript)
+			npc.is_ambient = true
+			npc.home_pos = spawn_pos
+			npc.work_pos = spawn_pos
+			npc.wander_radius = radius
+			npc.role_color = role_colors.pick_random()
+			add_child(npc)
+
+
 # --- Player (Joseph) ---------------------------------------------------------
 func _spawn_player() -> void:
 	if not _house_positions.is_empty():
@@ -504,7 +532,14 @@ func _spawn_player() -> void:
 	var player := CharacterBody3D.new()
 	player.set_script(PlayerScript)
 	add_child(player)
-	player.global_position = _joseph_home_pos + Vector3(3, 1, 3)
+	var spawn_pos := _joseph_home_pos + Vector3(3, 1, 3)
+	player.global_position = spawn_pos
+	player.home_position = spawn_pos
+
+	var hud := CanvasLayer.new()
+	hud.set_script(HUDScript)
+	add_child(hud)
+	hud.setup(player)
 
 
 # --- Roads connecting districts (mirrors map adjacency) ----------------------

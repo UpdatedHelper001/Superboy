@@ -1,14 +1,22 @@
 extends CanvasLayer
-## Top-left HUD: a top-down minimap that follows the player, plus a health
-## bar underneath it. Created by WorldGenerator once the player exists.
+## HUD: a top-down minimap + health bar in the top-left, and a day/time
+## clock in the top-right. Created by WorldGenerator once the player exists.
 
 const MAP_SIZE := 160.0
 const MAP_WORLD_SPAN := 130.0  # world units visible across the minimap
 const MAP_HEIGHT_ABOVE := 140.0
 
+const CLOCK_WIDTH := 130.0
+const CLOCK_HEIGHT := 46.0
+const DAY_LENGTH := 120.0     # seconds per full day/night cycle -- matches NPC.gd's day_length default
+const DAY_START_HOUR := 22.0  # phase 0.0 = 10 PM, lining up with NPCs starting their day AT_HOME
+
 var _player: CharacterBody3D
 var _map_camera: Camera3D
 var _health_fill: ColorRect
+var _clock_label: Label
+var _world_elapsed := 0.0
+var _day_count := 1
 const BAR_WIDTH := MAP_SIZE - 8.0
 
 
@@ -16,6 +24,7 @@ func setup(player: CharacterBody3D) -> void:
 	_player = player
 	_build_minimap()
 	_build_health_bar()
+	_build_clock()
 	player.health_changed.connect(_on_health_changed)
 	_on_health_changed(player.health, 100.0)
 
@@ -87,11 +96,59 @@ func _build_health_bar() -> void:
 
 
 func _on_health_changed(current: float, max_hp: float) -> void:
-	var ratio := clamp(current / max_hp, 0.0, 1.0)
+	var ratio: float = clamp(current / max_hp, 0.0, 1.0)
 	_health_fill.size.x = BAR_WIDTH * ratio
 	_health_fill.color = Color(0.8, 0.15, 0.15).lerp(Color(0.2, 0.8, 0.3), ratio)
 
 
-func _process(_delta: float) -> void:
+## Top-right panel showing an in-world clock, mirroring the minimap panel's
+## style. Runs on its own independent timer (not synced to any one NPC's
+## staggered schedule) over the same DAY_LENGTH every NPC's day/night cycle
+## uses, so it reads as "the time of day" rather than any specific person's.
+func _build_clock() -> void:
+	var panel := Panel.new()
+	panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	panel.position = Vector2(-16.0 - CLOCK_WIDTH, 16.0)
+	panel.size = Vector2(CLOCK_WIDTH, CLOCK_HEIGHT)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0, 0, 0, 0.35)
+	style.border_color = Color(1, 1, 1, 0.6)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(10)
+	panel.add_theme_stylebox_override("panel", style)
+	add_child(panel)
+
+	_clock_label = Label.new()
+	_clock_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_clock_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_clock_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_clock_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.9))
+	_clock_label.add_theme_font_size_override("font_size", 16)
+	panel.add_child(_clock_label)
+
+	_update_clock_label()
+
+
+func _update_clock_label() -> void:
+	if not _clock_label:
+		return
+	var phase := _world_elapsed / DAY_LENGTH
+	var total_hours := fmod(DAY_START_HOUR + phase * 24.0, 24.0)
+	var hour := int(total_hours)
+	var minute := int((total_hours - hour) * 60.0)
+	var am_pm := "AM" if hour < 12 else "PM"
+	var hour12 := hour % 12
+	if hour12 == 0:
+		hour12 = 12
+	_clock_label.text = "Day %d\n%02d:%02d %s" % [_day_count, hour12, minute, am_pm]
+
+
+func _process(delta: float) -> void:
 	if _player and _map_camera:
 		_map_camera.global_position = Vector3(_player.global_position.x, _player.global_position.y + MAP_HEIGHT_ABOVE, _player.global_position.z)
+
+	_world_elapsed += delta
+	if _world_elapsed >= DAY_LENGTH:
+		_world_elapsed = fmod(_world_elapsed, DAY_LENGTH)
+		_day_count += 1
+	_update_clock_label()

@@ -66,8 +66,8 @@ func update_walk(delta: float, speed_ratio: float) -> void:
 	else:
 		walk_phase = lerp(walk_phase, 0.0, delta * 8.0)
 
-	var swing := sin(walk_phase) * leg_swing_max * clamp(speed_ratio, 0.0, 1.0)
-	var arm_swing := swing * (arm_swing_max / leg_swing_max)
+	var swing: float = sin(walk_phase) * leg_swing_max * clamp(speed_ratio, 0.0, 1.0)
+	var arm_swing: float = swing * (arm_swing_max / leg_swing_max)
 	if left_leg: left_leg.rotation.x = swing
 	if right_leg: right_leg.rotation.x = -swing
 	if left_arm: left_arm.rotation.x = -arm_swing

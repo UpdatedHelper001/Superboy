@@ -21,6 +21,20 @@ var _rig := CharacterRig.new()
 var _wander_target := Vector3.ZERO
 var _wander_timer := 0.0
 
+# Straight-line movement has no obstacle avoidance, so a target that's
+# blocked (another NPC in the way, or an edge case that still lands an NPC
+# too close to a wall) can otherwise leave it pushed uselessly against
+# whatever it hit. These track "am I actually making progress?" and steer
+# around the obstruction for a couple of seconds when the answer is no.
+const STUCK_CHECK_INTERVAL := 1.2
+const STUCK_MIN_PROGRESS := 0.6
+const DETOUR_DURATION := 2.0
+const DETOUR_DISTANCE := 3.0
+var _stuck_check_timer := STUCK_CHECK_INTERVAL
+var _stuck_check_pos := Vector3.ZERO
+var _detour_target := Vector3.ZERO
+var _detour_timer := 0.0
+
 const SKIN_TONES := [Color(0.85, 0.7, 0.55), Color(0.65, 0.48, 0.35), Color(0.4, 0.28, 0.2), Color(0.93, 0.8, 0.68)]
 const HAIR_COLORS := [Color(0.1, 0.08, 0.06), Color(0.35, 0.22, 0.12), Color(0.6, 0.55, 0.5), Color(0.15, 0.1, 0.08)]
 
@@ -29,7 +43,10 @@ func _ready() -> void:
 	_elapsed = randf() * day_length
 	add_to_group("npc")
 	_build_visual()
-	global_position = home_pos
+	# A tiny lift off the ground plane avoids spawning slightly embedded in
+	# it (the ground collision's top surface sits a hair above y=0).
+	global_position = home_pos + Vector3(0, 0.05, 0)
+	_stuck_check_pos = global_position
 
 
 func _build_visual() -> void:
@@ -96,6 +113,8 @@ func _physics_process(delta: float) -> void:
 				target = _update_wander(delta, work_pos, wander_radius)
 				move_speed = WANDER_SPEED
 
+	target = _apply_unstuck(delta, target)
+
 	var to_target := target - global_position
 	to_target.y = 0
 	if to_target.length() > 0.4:
@@ -111,6 +130,38 @@ func _physics_process(delta: float) -> void:
 
 	var h_speed := Vector2(velocity.x, velocity.z).length()
 	_rig.update_walk(delta, h_speed / SPEED)
+
+
+## Detects "trying to get somewhere but barely moving" (typically an NPC
+## pushed up against a wall or another NPC) and substitutes a sideways
+## detour point for a couple of seconds so it can walk around whatever it's
+## stuck on, instead of indefinitely pushing into it. Returns whatever the
+## NPC should actually walk toward this frame -- either the real target
+## passed in, or a temporary detour.
+func _apply_unstuck(delta: float, real_target: Vector3) -> Vector3:
+	if _detour_timer > 0.0:
+		_detour_timer -= delta
+		if _detour_timer > 0.0 and global_position.distance_to(_detour_target) > 0.6:
+			return _detour_target
+
+	_stuck_check_timer -= delta
+	if _stuck_check_timer <= 0.0:
+		_stuck_check_timer = STUCK_CHECK_INTERVAL
+		var progressed := global_position.distance_to(_stuck_check_pos)
+		_stuck_check_pos = global_position
+		var wants_to_move := real_target.distance_to(global_position) > 0.4
+		if wants_to_move and progressed < STUCK_MIN_PROGRESS:
+			var to_target := real_target - global_position
+			to_target.y = 0
+			var perp := Vector3(-to_target.z, 0, to_target.x)
+			perp = perp.normalized() if perp.length() > 0.01 else Vector3(1, 0, 0)
+			if randf() < 0.5:
+				perp = -perp
+			_detour_target = global_position + perp * DETOUR_DISTANCE
+			_detour_timer = DETOUR_DURATION
+			return _detour_target
+
+	return real_target
 
 
 ## Picks a lazy wander target within `radius` of `center` and keeps returning

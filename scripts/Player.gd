@@ -26,6 +26,7 @@ var _rig := CharacterRig.new()
 var health := MAX_HEALTH
 var home_position: Vector3
 var _invuln_timer := 0.0
+var _is_dying := false
 
 
 func _ready() -> void:
@@ -159,9 +160,10 @@ func _physics_process(delta: float) -> void:
 
 
 ## Reduces health (e.g. a hard landing). Ignored while invulnerable (right
-## after a respawn) or for non-positive amounts. Triggers _die() at 0 HP.
+## after a respawn), for non-positive amounts, or while a previous hit is
+## already mid-death (see _die() below).
 func take_damage(amount: float) -> void:
-	if _invuln_timer > 0.0 or amount <= 0.0:
+	if _invuln_timer > 0.0 or amount <= 0.0 or _is_dying:
 		return
 	health = max(health - amount, 0.0)
 	health_changed.emit(health, MAX_HEALTH)
@@ -169,11 +171,20 @@ func take_damage(amount: float) -> void:
 		_die()
 
 
+## A lethal hit used to respawn Joseph with full health again inside the
+## very same physics frame the damage happened -- the HUD never actually got
+## a frame to render the health bar at 0, so a fatal fall looked visually
+## identical to no damage at all ("invincible"). Now health is held at 0 for
+## a brief beat (long enough to render/feel) before the teleport-home and
+## heal, so the hit is actually seen.
 func _die() -> void:
+	_is_dying = true
+	await get_tree().create_timer(0.6).timeout
 	var respawn := home_position if home_position != Vector3.ZERO else global_position
 	teleport_to(respawn)
 	health = MAX_HEALTH
 	_invuln_timer = RESPAWN_INVULN_TIME
+	_is_dying = false
 	health_changed.emit(health, MAX_HEALTH)
 
 

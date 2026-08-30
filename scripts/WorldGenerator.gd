@@ -10,15 +10,22 @@ const DOOR_HEIGHT := 2.3
 const WALL_THICKNESS := 0.4
 
 var _interior_counter := 0
-var _house_positions: Array = []
-var _workplaces: Array = []
+var _house_positions: Array = []  # Array of {"pos": Vector3, "front": Vector3} — "front" is the world-space point just outside that house's actual door
+var _workplaces: Array = []       # Array of {"pos": Vector3, "kind": String, "front": Vector3}
 var _school_pos: Vector3
-var _joseph_home_pos: Vector3
 var ZONES: Array = []
 
 const PlayerScript := preload("res://scripts/Player.gd")
 const NPCScript := preload("res://scripts/NPC.gd")
 const HUDScript := preload("res://scripts/HUD.gd")
+
+## Buildings (each with its own interior room) spawned per frame during
+## chunked generation, and NPCs (each with an articulated body) spawned per
+## frame right after. Kept low enough that no single frame does much more
+## work than a normal gameplay frame -- see _populate_zones_chunked below.
+const STRUCTURES_PER_CHUNK := 5
+const NPCS_PER_CHUNK := 6
+
 
 func _ready() -> void:
 	randomize()
@@ -26,12 +33,61 @@ func _ready() -> void:
 	_build_environment()
 	for z in ZONES:
 		_build_ground(z)
-		_populate_zone(z)
 	_build_connecting_roads()
 	_build_school()
-	_spawn_npcs()
-	_spawn_ambient_npcs()
+
+	# Building ~180 structures (each with a separate interior room) and then
+	# ~150+ NPCs (each with a multi-part articulated body) all in a single
+	# frame used to stall the game for a very noticeable moment on startup --
+	# worst of all on the low-end/Android hardware this project targets. Both
+	# passes are chunked across multiple frames instead, with a loading
+	# screen tracking progress.
+	var loading := _show_loading_screen()
+	await _populate_zones_chunked(loading)
+	await _spawn_npcs_chunked(loading)
+	await _spawn_ambient_npcs_chunked(loading)
+	_hide_loading_screen(loading)
+
 	_spawn_player()
+
+
+# --- Chunked generation / loading screen -------------------------------------
+func _show_loading_screen() -> CanvasLayer:
+	var layer := CanvasLayer.new()
+	layer.layer = 50
+	add_child(layer)
+
+	var bg := ColorRect.new()
+	bg.color = Color(0.05, 0.05, 0.08, 0.94)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(bg)
+
+	var label := Label.new()
+	label.name = "LoadingLabel"
+	label.text = "Generating Nova Terra... 0%"
+	label.add_theme_font_size_override("font_size", 22)
+	label.add_theme_color_override("font_color", Color(1, 1, 1))
+	label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	layer.add_child(label)
+
+	return layer
+
+
+func _update_loading(loading: CanvasLayer, done: int, total: int, prefix: String = "Generating Nova Terra") -> void:
+	if not loading:
+		return
+	var label := loading.get_node("LoadingLabel") as Label
+	if not label:
+		return
+	var pct := 100 if total <= 0 else int(round(100.0 * done / total))
+	label.text = "%s... %d%%" % [prefix, pct]
+
+
+func _hide_loading_screen(loading: CanvasLayer) -> void:
+	if loading:
+		loading.queue_free()
 
 
 # --- District layout (mirrors the Nova Terra city map) ---------------------
@@ -117,25 +173,48 @@ func _ground_color(kind: String) -> Color:
 
 
 # --- Population: buildings, huts, shops, trees -------------------------------
-func _populate_zone(zone: Dictionary) -> void:
-	var origin: Vector3 = zone["pos"]
-	var structure_count: int = zone["count"]
-	var spacing: float = zone["spacing"]
-	var kind: String = zone["kind"]
 
-	var per_row := int(ceil(sqrt(structure_count)))
-	var placed := 0
-	var start_x := origin.x - (per_row * spacing) / 2.0
-	var start_z := origin.z - (per_row * spacing) / 2.0
+## Precomputes every structure's zone-kind and grid position (cheap, pure
+## math) so the actual node-creation work below can be spread across frames
+## without redoing this layout math each time.
+func _collect_structure_slots() -> Array:
+	var slots: Array = []
+	for z in ZONES:
+		var origin: Vector3 = z["pos"]
+		var structure_count: int = z["count"]
+		var spacing: float = z["spacing"]
+		var kind: String = z["kind"]
 
-	for row in range(per_row):
-		for col in range(per_row):
+		var per_row := int(ceil(sqrt(structure_count)))
+		var placed := 0
+		var start_x := origin.x - (per_row * spacing) / 2.0
+		var start_z := origin.z - (per_row * spacing) / 2.0
+
+		for row in range(per_row):
+			for col in range(per_row):
+				if placed >= structure_count:
+					break
+				var jitter := Vector3(randf_range(-2.0, 2.0), 0, randf_range(-2.0, 2.0))
+				var pos := Vector3(start_x + col * spacing, 0, start_z + row * spacing) + jitter
+				slots.append({"kind": kind, "pos": pos})
+				placed += 1
 			if placed >= structure_count:
-				return
-			var jitter := Vector3(randf_range(-2.0, 2.0), 0, randf_range(-2.0, 2.0))
-			var pos := Vector3(start_x + col * spacing, 0, start_z + row * spacing) + jitter
-			_place_structure(kind, pos)
-			placed += 1
+				break
+	return slots
+
+
+## Spawns every building/hut/tree a handful at a time across multiple frames
+## (STRUCTURES_PER_CHUNK per frame) instead of all ~180 structures -- each
+## with its own interior room -- in one blocking burst.
+func _populate_zones_chunked(loading: CanvasLayer) -> void:
+	var slots := _collect_structure_slots()
+	for i in range(slots.size()):
+		var slot: Dictionary = slots[i]
+		_place_structure(slot["kind"], slot["pos"])
+		if i % STRUCTURES_PER_CHUNK == STRUCTURES_PER_CHUNK - 1:
+			_update_loading(loading, i + 1, slots.size(), "Raising buildings")
+			await get_tree().process_frame
+	_update_loading(loading, slots.size(), slots.size(), "Raising buildings")
 
 
 func _place_structure(zone_kind: String, pos: Vector3) -> void:
@@ -151,11 +230,12 @@ func _place_structure(zone_kind: String, pos: Vector3) -> void:
 	add_child(structure)
 
 	_add_door_and_interior(structure, struct_kind, pos)
+	var door_front: Vector3 = structure.get_meta("door_front")
 
 	if zone_kind in ["residential", "old_town", "beach"] and struct_kind != "shop":
-		_house_positions.append(pos)
+		_house_positions.append({"pos": pos, "front": door_front})
 	if struct_kind == "shop" or struct_kind == "building":
-		_workplaces.append({"pos": pos, "kind": struct_kind})
+		_workplaces.append({"pos": pos, "kind": struct_kind, "front": door_front})
 
 
 func _pick_structure_kind(zone_kind: String) -> String:
@@ -346,6 +426,16 @@ func _add_box_part(body: StaticBody3D, pos: Vector3, size: Vector3, color: Color
 func _add_door_and_interior(structure: StaticBody3D, kind: String, exterior_pos: Vector3) -> Node3D:
 	var size: Vector3 = structure.get_meta("size")
 	var door_h: float = structure.get_meta("door_h")
+	# The door itself is built in local space facing local +Z, so it already
+	# rotates correctly with the structure. But callers that need a *target*
+	# point outside the door (NPC work/home spots, the player's spawn, the
+	# exit-door teleport) previously assumed that local +Z always equals
+	# world +Z -- wrong for 3 out of 4 of the random Y rotations applied in
+	# _place_structure, and even at rotation 0 the old fixed offsets landed
+	# inside the structure's own solid collision instead of outside it. Read
+	# the structure's actual world-space forward axis here instead, once,
+	# and hand every caller a point that's genuinely outside the building.
+	var door_dir: Vector3 = structure.transform.basis.z
 
 	var entry_door := Area3D.new()
 	entry_door.name = "EntryDoor"
@@ -365,7 +455,11 @@ func _add_door_and_interior(structure: StaticBody3D, kind: String, exterior_pos:
 	add_child(interior)
 
 	var interior_spawn := interior_offset + Vector3(0, 1, 0)
-	var exterior_spawn := exterior_pos + Vector3(0, 1, size.z / 2.0 + 2.0)
+	var exterior_spawn := exterior_pos + door_dir * (size.z / 2.0 + 2.0) + Vector3(0, 1, 0)
+	# A safe, reusable "stand outside this door" point for NPC targeting and
+	# player home-spawn -- same idea as exterior_spawn above, just without
+	# the height lift (NPCs/ground logic add their own).
+	structure.set_meta("door_front", exterior_pos + door_dir * (size.z / 2.0 + 2.5))
 
 	entry_door.body_entered.connect(func(body):
 		if body.is_in_group("player"):
@@ -478,29 +572,41 @@ func _spawn_teacher(parent: Node3D, local_pos: Vector3, color: Color, label_text
 
 
 # --- NPCs -----------------------------------------------------------------
-func _spawn_npcs() -> void:
+
+## One commuter NPC per workplace, a handful at a time across frames (each
+## NPC also builds a multi-part articulated body the same frame it spawns).
+## home_pos/work_pos both come from the "front" points computed in
+## _add_door_and_interior, so every commute target is a real point just
+## outside a door rather than inside the building's own solid collision.
+func _spawn_npcs_chunked(loading: CanvasLayer) -> void:
 	var role_colors := [Color(0.7, 0.6, 0.2), Color(0.2, 0.6, 0.7), Color(0.6, 0.3, 0.6)]
-	for job in _workplaces:
-		var home: Vector3 = job["pos"]
+	for i in range(_workplaces.size()):
+		var job: Dictionary = _workplaces[i]
+		var home_front: Vector3 = job["front"]  # fallback if no houses exist: lives at their own workplace
 		if not _house_positions.is_empty():
-			home = _house_positions.pick_random()
+			home_front = _house_positions.pick_random()["front"]
 
 		var npc := CharacterBody3D.new()
 		npc.set_script(NPCScript)
-		npc.home_pos = home + Vector3(2, 0, 2)
-		npc.work_pos = job["pos"] + Vector3(0, 0, 3)
+		npc.home_pos = home_front
+		npc.work_pos = job["front"]
 		npc.role_color = role_colors.pick_random()
 		add_child(npc)
+
+		if i % NPCS_PER_CHUNK == NPCS_PER_CHUNK - 1:
+			_update_loading(loading, i + 1, _workplaces.size(), "Sending residents to work")
+			await get_tree().process_frame
 
 
 ## Extra pedestrians with no job — they just drift around their district —
 ## so streets, the market, and the park feel lived-in instead of empty
-## between the commuter NPCs' scheduled trips.
-func _spawn_ambient_npcs() -> void:
+## between the commuter NPCs' scheduled trips. Also chunked across frames.
+func _spawn_ambient_npcs_chunked(loading: CanvasLayer) -> void:
 	var role_colors := [Color(0.7, 0.6, 0.2), Color(0.2, 0.6, 0.7), Color(0.6, 0.3, 0.6), Color(0.3, 0.7, 0.4), Color(0.8, 0.5, 0.3), Color(0.75, 0.4, 0.25)]
 	# Foot-traffic density per district kind (fraction of that zone's structure count).
 	var density := {"downtown": 0.5, "old_town": 0.5, "beach": 0.4, "residential": 0.2, "industrial": 0.15, "port": 0.15}
 
+	var spawns: Array = []
 	for z in ZONES:
 		var kind: String = z["kind"]
 		var count: int
@@ -509,30 +615,38 @@ func _spawn_ambient_npcs() -> void:
 		else:
 			count = int(z["count"] * density.get(kind, 0.0))
 		var radius: float = min(z["size"].x, z["size"].y) / 2.0 * 0.75
-
 		for i in range(count):
 			var spawn_pos: Vector3 = z["pos"] + Vector3(randf_range(-radius, radius), 0, randf_range(-radius, radius))
-			var npc := CharacterBody3D.new()
-			npc.set_script(NPCScript)
-			npc.is_ambient = true
-			npc.home_pos = spawn_pos
-			npc.work_pos = spawn_pos
-			npc.wander_radius = radius
-			npc.role_color = role_colors.pick_random()
-			add_child(npc)
+			spawns.append({"pos": spawn_pos, "radius": radius})
+
+	for i in range(spawns.size()):
+		var s: Dictionary = spawns[i]
+		var npc := CharacterBody3D.new()
+		npc.set_script(NPCScript)
+		npc.is_ambient = true
+		npc.home_pos = s["pos"]
+		npc.work_pos = s["pos"]
+		npc.wander_radius = s["radius"]
+		npc.role_color = role_colors.pick_random()
+		add_child(npc)
+
+		if i % NPCS_PER_CHUNK == NPCS_PER_CHUNK - 1:
+			_update_loading(loading, i + 1, spawns.size(), "Filling the streets")
+			await get_tree().process_frame
 
 
 # --- Player (Joseph) ---------------------------------------------------------
 func _spawn_player() -> void:
+	var home_front: Vector3
 	if not _house_positions.is_empty():
-		_joseph_home_pos = _house_positions.pick_random()
+		home_front = _house_positions.pick_random()["front"]
 	else:
-		_joseph_home_pos = _zone_pos("residential_north")
+		home_front = _zone_pos("residential_north")
 
 	var player := CharacterBody3D.new()
 	player.set_script(PlayerScript)
 	add_child(player)
-	var spawn_pos := _joseph_home_pos + Vector3(3, 1, 3)
+	var spawn_pos := home_front + Vector3(0, 1, 0)
 	player.global_position = spawn_pos
 	player.home_position = spawn_pos
 

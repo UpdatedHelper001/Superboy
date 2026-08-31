@@ -25,3 +25,10 @@ textures/vram_compression/import_etc2_astc=true
 
 [input_devices]
 pointing/emulate_mouse_from_touch=false
+
+[importer_defaults]
+
+texture={
+"compress/mode": 2,
+"mipmaps/generate": true
+}

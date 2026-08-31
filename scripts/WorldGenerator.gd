@@ -9,6 +9,52 @@ const DOOR_WIDTH := 2.0
 const DOOR_HEIGHT := 2.3
 const WALL_THICKNESS := 0.4
 
+# --- Building facade art (art/textures) -------------------------------------
+# Each 1280x720 source PNG is really a 720x720 square facade card,
+# horizontally centered with transparent padding on both sides -- crop that
+# out rather than stretching the padding into the building.
+const FACADE_CROP := Rect2(280, 0, 720, 720)
+const FACADE_VARIANTS := 8
+const DISTRICT_TEXTURE_FOLDER := {
+	"residential": "residential",
+	"downtown": "downtown",
+	"old_town": "old_town",
+	"industrial": "industrial",
+	"port": "port",
+	"beach": "beach",
+}
+
+# --- District signage (art/decals) -------------------------------------------
+# Decals are a wide horizontal pill, vertically centered in the same
+# 1280x720 canvas -- a different crop than the building facades above.
+const SIGN_CROP := Rect2(0, 200, 1280, 320)
+const DISTRICT_SIGNS := [
+	{"zone": "downtown", "decal": "downtown_finance_sign"},
+	{"zone": "greenwood_park", "decal": "greenwood_park_sign"},
+	{"zone": "industrial_east", "decal": "industrial_logistics_sign"},
+	{"zone": "old_town", "decal": "old_town_market_sign"},
+	{"zone": "port_authority", "decal": "port_authority_sign"},
+	{"zone": "suburban_west", "decal": "residential_sign"},
+	{"zone": "residential_north", "decal": "residential_sign"},
+	{"zone": "south_beach", "decal": "south_beach_sign"},
+]
+
+# Zone adjacency, also used by _build_connecting_roads below -- hoisted to a
+# shared const so district sign placement can point each sign toward
+# whichever neighboring zone people are most likely arriving from.
+const ZONE_LINKS := [
+	["suburban_west", "residential_north"],
+	["suburban_west", "old_town"],
+	["residential_north", "downtown"],
+	["downtown", "old_town"],
+	["downtown", "industrial_east"],
+	["old_town", "greenwood_park"],
+	["industrial_east", "port_authority"],
+	["greenwood_park", "port_authority"],
+	["greenwood_park", "south_beach"],
+	["old_town", "south_beach"],
+]
+
 var _interior_counter := 0
 var _house_positions: Array = []  # Array of {"pos": Vector3, "front": Vector3} — "front" is the world-space point just outside that house's actual door
 var _workplaces: Array = []       # Array of {"pos": Vector3, "kind": String, "front": Vector3}
@@ -35,6 +81,7 @@ func _ready() -> void:
 		_build_ground(z)
 	_build_connecting_roads()
 	_build_school()
+	_place_district_signs()
 
 	# Building ~180 structures (each with a separate interior room) and then
 	# ~150+ NPCs (each with a multi-part articulated body) all in a single
@@ -224,7 +271,7 @@ func _place_structure(zone_kind: String, pos: Vector3) -> void:
 		_place_tree(pos)
 		return
 
-	var structure := _make_structure(struct_kind)
+	var structure := _make_structure(struct_kind, zone_kind)
 	structure.position = pos
 	structure.rotation_degrees.y = [0, 90, 180, 270].pick_random()
 	add_child(structure)
@@ -288,7 +335,7 @@ func _place_tree(pos: Vector3) -> void:
 	add_child(holder)
 
 
-func _make_structure(kind: String) -> StaticBody3D:
+func _make_structure(kind: String, zone_kind: String) -> StaticBody3D:
 	var body := StaticBody3D.new()
 	var size := Vector3.ZERO
 	var color := Color.WHITE
@@ -306,13 +353,21 @@ func _make_structure(kind: String) -> StaticBody3D:
 		_:
 			size = Vector3(6, 4, 6)
 			color = Color.GRAY
-	color = color.darkened(randf_range(0.0, 0.15))  # subtle per-building variation
+	color = color.darkened(randf_range(0.0, 0.15))  # subtle variation where the base color still shows: roof cap, and the recessed doorway reveal
 	var door_h := _build_door_shell(body, size, color)
-
 	_add_roof_cap(body, size, color)
-	_add_facade_windows(body, kind, size, size.x / 2.0 - DOOR_WIDTH / 2.0, size.z / 2.0)
-	if kind == "shop":
-		_add_shop_awning(body, door_h, size.z / 2.0)
+
+	# Shops always get the "commercial" set (baked-in awning + shop name);
+	# everything else uses its own district's facade art if we have one.
+	# Falls back to the old procedural window grid + awning for anything
+	# without matching art (e.g. a zone kind added later with no art yet).
+	var folder: String = "commercial" if kind == "shop" else DISTRICT_TEXTURE_FOLDER.get(zone_kind, "")
+	if folder != "":
+		_apply_facade(body, size, folder)
+	else:
+		_add_facade_windows(body, kind, size, size.x / 2.0 - DOOR_WIDTH / 2.0, size.z / 2.0)
+		if kind == "shop":
+			_add_shop_awning(body, door_h, size.z / 2.0)
 
 	body.set_meta("kind", kind)
 	body.set_meta("size", size)
@@ -401,6 +456,44 @@ func _add_shop_awning(body: StaticBody3D, door_h: float, half_z: float) -> void:
 	_add_box_part(body, Vector3(0, door_h + 0.18, half_z + 0.45), Vector3(DOOR_WIDTH + 0.6, 0.1, 0.7), Color(0.8, 0.15, 0.15), false)
 
 
+func _random_facade_texture(folder: String) -> Texture2D:
+	var idx := randi_range(1, FACADE_VARIANTS)
+	var path := "res://art/textures/%s/%s_%02d.png" % [folder, folder, idx]
+	var base := load(path) as Texture2D
+	if not base:
+		return null
+	var atlas := AtlasTexture.new()
+	atlas.atlas = base
+	atlas.region = FACADE_CROP
+	return atlas
+
+
+## A single textured quad standing in for the old procedural window grid +
+## (for shops) the flat awning box -- the art pack's facade art already
+## bakes in windows, a roofline, a door, and (for the "commercial" set) an
+## awning with a shop name. Non-colliding and sits just proud of the real
+## recessed door shell/collision built by _build_door_shell, so players and
+## NPCs still walk straight through it to the actual door trigger behind.
+func _apply_facade(structure: StaticBody3D, size: Vector3, folder: String) -> void:
+	var tex := _random_facade_texture(folder)
+	if not tex:
+		return
+
+	var mesh := PlaneMesh.new()
+	mesh.size = Vector2(size.x, size.y)
+	mesh.orientation = PlaneMesh.FACE_Z
+	var mat := StandardMaterial3D.new()
+	mat.albedo_texture = tex
+	mat.roughness = 0.85
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED  # reads correctly regardless of which way the generated winding faces
+	mesh.material = mat
+
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.position = Vector3(0, size.y / 2.0, size.z / 2.0 + 0.03)
+	structure.add_child(mi)
+
+
 func _add_box_part(body: StaticBody3D, pos: Vector3, size: Vector3, color: Color, collide: bool = true) -> void:
 	var mesh := BoxMesh.new()
 	mesh.size = size
@@ -485,7 +578,7 @@ func _build_school() -> void:
 	var color := Color(0.8, 0.65, 0.4)
 	var door_h := _build_door_shell(body, size, color)
 	_add_roof_cap(body, size, color)
-	_add_facade_windows(body, "building", size, size.x / 2.0 - DOOR_WIDTH / 2.0, size.z / 2.0)
+	_apply_facade(body, size, "civic")
 
 	body.set_meta("kind", "school")
 	body.set_meta("size", size)
@@ -656,6 +749,86 @@ func _spawn_player() -> void:
 	hud.setup(player)
 
 
+# --- District entrance signage (art/decals) -----------------------------------
+
+## Points from a zone's center toward whichever neighboring zone ZONE_LINKS
+## says it connects to first, so a district's sign faces roughly toward the
+## road most people actually arrive from.
+func _primary_neighbor_dir(zone_id: String, zone_pos: Vector3) -> Vector3:
+	for pair in ZONE_LINKS:
+		if pair[0] == zone_id or pair[1] == zone_id:
+			var other_id: String = pair[1] if pair[0] == zone_id else pair[0]
+			var dir: Vector3 = _zone_pos(other_id) - zone_pos
+			dir.y = 0
+			if dir.length() > 0.01:
+				return dir.normalized()
+	return Vector3(0, 0, 1)
+
+
+func _find_zone(id: String) -> Dictionary:
+	for z in ZONES:
+		if z["id"] == id:
+			return z
+	return {}
+
+
+func _place_district_signs() -> void:
+	for entry in DISTRICT_SIGNS:
+		var zone := _find_zone(entry["zone"])
+		if zone.is_empty():
+			continue
+		var zone_pos: Vector3 = zone["pos"]
+		var size: Vector2 = zone["size"]
+		var dir := _primary_neighbor_dir(entry["zone"], zone_pos)
+		var reach: float = min(size.x, size.y) / 2.0 * 0.85
+		_place_sign(zone_pos + dir * reach, -dir, entry["decal"])
+
+	# A neutral "Welcome to Nova Terra" landmark near the school -- itself a
+	# civic building not tied to any one commercial district -- rather than
+	# favoring one district's sign over the others.
+	_place_sign(_school_pos + Vector3(-22, 0, 4), Vector3(1, 0, 0), "nova_terra_neutral_sign")
+
+
+## A simple post + double-sided textured board. `facing_dir` is the guessed
+## direction approaching traffic comes from; the material is double-sided so
+## the sign still reads fine even if that guess is off by 180 degrees.
+func _place_sign(pos: Vector3, facing_dir: Vector3, decal_name: String) -> void:
+	var base := load("res://art/decals/%s.png" % decal_name) as Texture2D
+	if not base:
+		return
+	var tex := AtlasTexture.new()
+	tex.atlas = base
+	tex.region = SIGN_CROP
+
+	var post := MeshInstance3D.new()
+	var post_mesh := BoxMesh.new()
+	post_mesh.size = Vector3(0.22, 2.0, 0.22)
+	var post_mat := StandardMaterial3D.new()
+	post_mat.albedo_color = Color(0.32, 0.3, 0.27)
+	post_mesh.material = post_mat
+	post.mesh = post_mesh
+	post.position = pos + Vector3(0, 1.0, 0)
+	add_child(post)
+
+	var aspect: float = float(tex.get_width()) / float(tex.get_height())
+	var board_h := 1.0
+	var mesh := PlaneMesh.new()
+	mesh.size = Vector2(board_h * aspect, board_h)
+	mesh.orientation = PlaneMesh.FACE_Z
+	var mat := StandardMaterial3D.new()
+	mat.albedo_texture = tex
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mesh.material = mat
+
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.position = pos + Vector3(0, 2.15, 0)
+	add_child(mi)
+	if facing_dir.length() > 0.01:
+		mi.look_at(mi.position + facing_dir, Vector3.UP)
+
+
 # --- Roads connecting districts (mirrors map adjacency) ----------------------
 func _build_connecting_roads() -> void:
 	var road_mat := StandardMaterial3D.new()
@@ -668,18 +841,7 @@ func _build_connecting_roads() -> void:
 	line_mat.emission = Color(0.9, 0.8, 0.2)
 	line_mat.emission_energy_multiplier = 0.3
 
-	var links := [
-		["suburban_west", "residential_north"],
-		["suburban_west", "old_town"],
-		["residential_north", "downtown"],
-		["downtown", "old_town"],
-		["downtown", "industrial_east"],
-		["old_town", "greenwood_park"],
-		["industrial_east", "port_authority"],
-		["greenwood_park", "port_authority"],
-		["greenwood_park", "south_beach"],
-		["old_town", "south_beach"],
-	]
+	var links := ZONE_LINKS
 
 	for pair in links:
 		var a := _zone_pos(pair[0])

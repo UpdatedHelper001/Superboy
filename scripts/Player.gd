@@ -57,17 +57,24 @@ func _build_visual() -> void:
 	_rig.arm_swing_max = 0.55
 	_rig.anim_speed = 6.5
 	_rig.build(self, {
-		"hip_x": 0.16, "hip_y": 0.9, "leg_len": 0.9, "leg_r": 0.12, "leg_color": Color(0.2, 0.2, 0.25),
-		"shoulder_x": 0.42, "shoulder_y": 1.5, "arm_len": 0.7, "arm_r": 0.09, "arm_color": Color(0.15, 0.25, 0.55),
-		"torso_r": 0.35, "torso_h": 0.8, "torso_y": 1.3, "torso_color": Color(0.15, 0.25, 0.55),
-		"head_r": 0.25, "head_y": 1.95, "head_color": Color(0.85, 0.7, 0.55),
+		"model_path": "res://art/models/MainCharacter_Default.glb",
+		"leg_color": Color(0.2, 0.2, 0.25),
+		"arm_color": Color(0.15, 0.25, 0.55),
+		"torso_color": Color(0.15, 0.25, 0.55),
+		"head_color": Color(0.85, 0.7, 0.55),
+		# Fallback values if the model fails to load:
+		"hip_x": 0.16, "hip_y": 0.9, "leg_len": 0.9, "leg_r": 0.12,
+		"shoulder_x": 0.42, "shoulder_y": 1.5, "arm_len": 0.7, "arm_r": 0.09,
+		"torso_r": 0.35, "torso_h": 0.8, "torso_y": 1.3,
+		"head_r": 0.25, "head_y": 1.95,
 		"hair_color": Color(0.25, 0.16, 0.1),
 	})
 	_add_backpack()
 
 
 ## A small backpack on Joseph's back so he reads as the protagonist among a
-## crowd of NPCs sharing the same low-poly rig.
+## crowd of NPCs sharing the same low-poly rig. Positioned at +Z: -Z is
+## "forward" (the direction look_at()/movement faces), so +Z is the back.
 func _add_backpack() -> void:
 	var pack := MeshInstance3D.new()
 	var mesh := BoxMesh.new()
@@ -76,7 +83,7 @@ func _add_backpack() -> void:
 	mat.albedo_color = Color(0.8, 0.2, 0.15)
 	mesh.material = mat
 	pack.mesh = mesh
-	pack.position = Vector3(0, 1.35, -0.28)
+	pack.position = Vector3(0, 1.35, 0.28)
 	add_child(pack)
 
 

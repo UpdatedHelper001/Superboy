@@ -4,6 +4,17 @@ extends RefCounted
 ## head, optional hair) on a parent Node3D, and drives a sine-wave walk cycle
 ## from a 0..1 speed ratio. Shared by Player.gd and NPC.gd so both characters
 ## animate identically without duplicating the limb-building code.
+##
+## Two ways to build a body:
+## - cfg with a "model_path" (res://art/models/*.glb): loads one of the
+##   reconstructed Nova Terra character rigs. These were rebuilt offline from
+##   the source pack's single merged, unrigged mesh into 6 separate nodes
+##   (LeftLeg/RightLeg/LeftArm/RightArm/Torso/Head), each pre-centered on the
+##   right pivot (hip/shoulder/torso-base/head-base) so they drop straight
+##   into this same pivot-rotation animation system. The source meshes have
+##   no material at all, so color still comes from cfg exactly as below.
+## - cfg without "model_path": the original procedural capsule/sphere
+##   primitives, used as a fallback if a model fails to load.
 
 var left_leg: Node3D
 var right_leg: Node3D
@@ -18,11 +29,60 @@ var leg_swing_max := 0.6
 var arm_swing_max := 0.45
 
 
-## `cfg` keys: hip_x, hip_y, leg_len, leg_r, leg_color,
-## shoulder_x, shoulder_y, arm_len, arm_r, arm_color,
-## torso_r, torso_h, torso_y, torso_color,
-## head_r, head_y, head_color, hair_color (optional).
+## `cfg` keys when using a model: model_path, leg_color, arm_color,
+## torso_color, head_color (all optional -- omit a *_color to leave that
+## part's default gray material).
+## `cfg` keys for the primitive fallback: hip_x, hip_y, leg_len, leg_r,
+## leg_color, shoulder_x, shoulder_y, arm_len, arm_r, arm_color, torso_r,
+## torso_h, torso_y, torso_color, head_r, head_y, head_color, hair_color
+## (optional).
 func build(parent: Node3D, cfg: Dictionary) -> void:
+	if cfg.has("model_path") and _build_from_model(parent, cfg):
+		return
+	_build_primitive(parent, cfg)
+
+
+## Loads a reconstructed character .glb and wires its named parts up as this
+## rig's swing pivots. Returns false (so the caller falls back to the
+## primitive body) if the model can't be loaded for any reason.
+func _build_from_model(parent: Node3D, cfg: Dictionary) -> bool:
+	var scene: PackedScene = load(cfg.model_path)
+	if not scene:
+		return false
+	var inst := scene.instantiate()
+	if not inst:
+		return false
+	parent.add_child(inst)
+
+	left_leg = inst.get_node_or_null("root/LeftLeg")
+	right_leg = inst.get_node_or_null("root/RightLeg")
+	left_arm = inst.get_node_or_null("root/LeftArm")
+	right_arm = inst.get_node_or_null("root/RightArm")
+	torso = inst.get_node_or_null("root/Torso") as MeshInstance3D
+	var head := inst.get_node_or_null("root/Head")
+
+	if not (left_leg and right_leg and left_arm and right_arm and torso and head):
+		inst.queue_free()
+		return false
+
+	_tint(left_leg, cfg.get("leg_color"))
+	_tint(right_leg, cfg.get("leg_color"))
+	_tint(left_arm, cfg.get("arm_color"))
+	_tint(right_arm, cfg.get("arm_color"))
+	_tint(torso, cfg.get("torso_color"))
+	_tint(head, cfg.get("head_color"))
+
+	torso_base_y = torso.position.y
+	return true
+
+
+func _tint(mi: Node3D, color) -> void:
+	if not (mi is MeshInstance3D) or color == null:
+		return
+	(mi as MeshInstance3D).set_surface_override_material(0, _mat(color))
+
+
+func _build_primitive(parent: Node3D, cfg: Dictionary) -> void:
 	left_leg = _make_limb(parent, Vector3(-cfg.hip_x, cfg.hip_y, 0), cfg.leg_len, cfg.leg_r, cfg.leg_color)
 	right_leg = _make_limb(parent, Vector3(cfg.hip_x, cfg.hip_y, 0), cfg.leg_len, cfg.leg_r, cfg.leg_color)
 	left_arm = _make_limb(parent, Vector3(-cfg.shoulder_x, cfg.shoulder_y, 0), cfg.arm_len, cfg.arm_r, cfg.arm_color)

@@ -38,6 +38,19 @@ var _detour_timer := 0.0
 const SKIN_TONES := [Color(0.85, 0.7, 0.55), Color(0.65, 0.48, 0.35), Color(0.4, 0.28, 0.2), Color(0.93, 0.8, 0.68)]
 const HAIR_COLORS := [Color(0.1, 0.08, 0.06), Color(0.35, 0.22, 0.12), Color(0.6, 0.55, 0.5), Color(0.15, 0.1, 0.08)]
 
+# Weighted by simple repetition (no separate weight table needed) toward a
+# believable city crowd: mostly civilians/workers, occasional
+# police/doctor/elder/child, gang rarest.
+const NPC_MODELS := [
+	"res://art/models/NPC_Civilian.glb", "res://art/models/NPC_Civilian.glb", "res://art/models/NPC_Civilian.glb",
+	"res://art/models/NPC_Worker.glb", "res://art/models/NPC_Worker.glb", "res://art/models/NPC_Worker.glb",
+	"res://art/models/NPC_Elder.glb", "res://art/models/NPC_Elder.glb",
+	"res://art/models/NPC_Child.glb", "res://art/models/NPC_Child.glb",
+	"res://art/models/NPC_Police.glb",
+	"res://art/models/NPC_Doctor.glb",
+	"res://art/models/NPC_Gang.glb",
+]
+
 
 func _ready() -> void:
 	_elapsed = randf() * day_length
@@ -63,10 +76,16 @@ func _build_visual() -> void:
 	_rig.arm_swing_max = 0.45
 	_rig.anim_speed = 6.0
 	_rig.build(self, {
-		"hip_x": 0.14, "hip_y": 0.78, "leg_len": 0.78, "leg_r": 0.1, "leg_color": limb_color,
-		"shoulder_x": 0.36, "shoulder_y": 1.3, "arm_len": 0.6, "arm_r": 0.08, "arm_color": role_color,
-		"torso_r": 0.3, "torso_h": 0.7, "torso_y": 1.13, "torso_color": role_color,
-		"head_r": 0.22, "head_y": 1.7, "head_color": SKIN_TONES.pick_random(),
+		"model_path": NPC_MODELS.pick_random(),
+		"leg_color": limb_color,
+		"arm_color": role_color,
+		"torso_color": role_color,
+		"head_color": SKIN_TONES.pick_random(),
+		# Fallback values if the model fails to load:
+		"hip_x": 0.14, "hip_y": 0.78, "leg_len": 0.78, "leg_r": 0.1,
+		"shoulder_x": 0.36, "shoulder_y": 1.3, "arm_len": 0.6, "arm_r": 0.08,
+		"torso_r": 0.3, "torso_h": 0.7, "torso_y": 1.13,
+		"head_r": 0.22, "head_y": 1.7,
 		"hair_color": HAIR_COLORS.pick_random(),
 	})
 

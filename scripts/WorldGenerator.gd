@@ -24,6 +24,29 @@ const DISTRICT_TEXTURE_FOLDER := {
 	"beach": "beach",
 }
 
+# --- Full 3D district buildings (art/buildings, NovaTerra source pack) ------
+# Real geometry (beveled walls, recessed windows, balconies/doors/roof gear)
+# replacing the flat facade card above for "building"-kind structures only --
+# huts and shops keep the flat-card system since none of these six models
+# are hut/shop scaled, and shops need to keep their awning+name signage.
+# size = (width, height, depth) the model was authored at (its main box,
+# not counting the balcony/canopy/door-frame trim that overhangs the front
+# face a little -- same idea as the old shop awning overhanging its wall).
+# This size feeds the same door-shell/collision/roof-cap math every other
+# structure uses, so a district's "building" picks now come out real-world
+# sized instead of the old random 8-14m box -- see the matching spacing
+# bump on each affected zone in _define_zones.
+const BUILDING_MODELS := {
+	"residential": {"path": "res://art/buildings/Modern_Apartment.glb", "size": Vector3(18, 18, 14)},
+	"downtown": {"path": "res://art/buildings/Downtown_Office.glb", "size": Vector3(20, 30, 16)},
+	"old_town": {"path": "res://art/buildings/Old_Town.glb", "size": Vector3(16, 13, 12)},
+	"industrial": {"path": "res://art/buildings/Industrial_Warehouse.glb", "size": Vector3(28, 9, 18)},
+	"port": {"path": "res://art/buildings/Industrial_Warehouse.glb", "size": Vector3(28, 9, 18)},
+	"beach": {"path": "res://art/buildings/Coastal_Villa.glb", "size": Vector3(15, 8, 12)},
+}
+const ABANDONED_BUILDING := {"path": "res://art/buildings/Abandoned.glb", "size": Vector3(14, 15, 12)}
+const ABANDONED_BUILDING_CHANCE := 0.08
+
 # --- District signage (art/decals) -------------------------------------------
 # Decals are a wide horizontal pill, vertically centered in the same
 # 1280x720 canvas -- a different crop than the building facades above.
@@ -139,14 +162,21 @@ func _hide_loading_screen(loading: CanvasLayer) -> void:
 
 # --- District layout (mirrors the Nova Terra city map) ---------------------
 func _define_zones() -> void:
+	# Spacing bumped (from the pre-NovaTerra values) wherever a zone kind can
+	# now roll a "building"-kind structure using a real BUILDING_MODELS
+	# footprint instead of the old random 8-14m box -- e.g. downtown is
+	# 100% "building" and Downtown_Office.glb alone is 20m wide, so the old
+	# 18-unit spacing would guarantee neighbor overlap. Each value here is
+	# comfortably above that district's widest possible building footprint
+	# plus the +/-2 unit placement jitter on both neighbors.
 	ZONES = [
-		{"id":"suburban_west","kind":"residential","pos":Vector3(-320,0,-40),"size":Vector2(220,220),"count":34,"spacing":18},
-		{"id":"residential_north","kind":"residential","pos":Vector3(0,0,-380),"size":Vector2(260,180),"count":40,"spacing":16},
-		{"id":"downtown","kind":"downtown","pos":Vector3(0,0,-140),"size":Vector2(200,180),"count":26,"spacing":18},
-		{"id":"old_town","kind":"old_town","pos":Vector3(-40,0,60),"size":Vector2(180,160),"count":24,"spacing":15},
+		{"id":"suburban_west","kind":"residential","pos":Vector3(-320,0,-40),"size":Vector2(220,220),"count":34,"spacing":22},
+		{"id":"residential_north","kind":"residential","pos":Vector3(0,0,-380),"size":Vector2(260,180),"count":40,"spacing":22},
+		{"id":"downtown","kind":"downtown","pos":Vector3(0,0,-140),"size":Vector2(200,180),"count":26,"spacing":26},
+		{"id":"old_town","kind":"old_town","pos":Vector3(-40,0,60),"size":Vector2(180,160),"count":24,"spacing":20},
 		{"id":"greenwood_park","kind":"park","pos":Vector3(140,0,120),"size":Vector2(160,160),"count":4,"spacing":30},
-		{"id":"industrial_east","kind":"industrial","pos":Vector3(280,0,-100),"size":Vector2(220,200),"count":14,"spacing":26},
-		{"id":"port_authority","kind":"port","pos":Vector3(360,0,120),"size":Vector2(160,160),"count":8,"spacing":28},
+		{"id":"industrial_east","kind":"industrial","pos":Vector3(280,0,-100),"size":Vector2(220,200),"count":14,"spacing":34},
+		{"id":"port_authority","kind":"port","pos":Vector3(360,0,120),"size":Vector2(160,160),"count":8,"spacing":34},
 		{"id":"south_beach","kind":"beach","pos":Vector3(60,0,280),"size":Vector2(260,120),"count":10,"spacing":22},
 	]
 
@@ -295,7 +325,9 @@ func _pick_structure_kind(zone_kind: String) -> String:
 		"downtown":
 			return "building"
 		"old_town":
-			return "hut" if roll < 0.4 else "shop"
+			if roll < 0.10: return "building"
+			elif roll < 0.45: return "hut"
+			else: return "shop"
 		"industrial":
 			return "building"
 		"port":
@@ -303,7 +335,9 @@ func _pick_structure_kind(zone_kind: String) -> String:
 		"park":
 			return "tree"
 		"beach":
-			return "shop" if roll < 0.5 else "hut"
+			if roll < 0.15: return "building"
+			elif roll < 0.60: return "shop"
+			else: return "hut"
 	return "building"
 
 
@@ -339,6 +373,7 @@ func _make_structure(kind: String, zone_kind: String) -> StaticBody3D:
 	var body := StaticBody3D.new()
 	var size := Vector3.ZERO
 	var color := Color.WHITE
+	var building_model: Dictionary = {}
 
 	match kind:
 		"hut":
@@ -348,26 +383,40 @@ func _make_structure(kind: String, zone_kind: String) -> StaticBody3D:
 			size = Vector3(randf_range(6, 9), randf_range(4, 5), randf_range(6, 9))
 			color = Color(0.75, 0.35, 0.3)
 		"building":
-			size = Vector3(randf_range(8, 14), randf_range(10, 30), randf_range(8, 14))
+			if BUILDING_MODELS.has(zone_kind):
+				building_model = ABANDONED_BUILDING if randf() < ABANDONED_BUILDING_CHANCE else BUILDING_MODELS[zone_kind]
+				size = building_model["size"]
+			else:
+				size = Vector3(randf_range(8, 14), randf_range(10, 30), randf_range(8, 14))
 			color = Color(0.5, 0.55, 0.6)
 		_:
 			size = Vector3(6, 4, 6)
 			color = Color.GRAY
 	color = color.darkened(randf_range(0.0, 0.15))  # subtle variation where the base color still shows: roof cap, and the recessed doorway reveal
-	var door_h := _build_door_shell(body, size, color)
-	_add_roof_cap(body, size, color)
 
-	# Shops always get the "commercial" set (baked-in awning + shop name);
-	# everything else uses its own district's facade art if we have one.
-	# Falls back to the old procedural window grid + awning for anything
-	# without matching art (e.g. a zone kind added later with no art yet).
-	var folder: String = "commercial" if kind == "shop" else DISTRICT_TEXTURE_FOLDER.get(zone_kind, "")
-	if folder != "":
-		_apply_facade(body, size, folder)
+	# A full 3D NovaTerra building replaces the flat facade entirely, so the
+	# procedural shell built below only needs to exist as invisible collision
+	# + doorway metadata -- it would otherwise z-fight with the model's own
+	# (fully enclosed, not just a front card) walls and roofline.
+	var use_model := not building_model.is_empty()
+	var door_h := _build_door_shell(body, size, color, not use_model)
+
+	if use_model:
+		_apply_building_model(body, building_model["path"])
 	else:
-		_add_facade_windows(body, kind, size, size.x / 2.0 - DOOR_WIDTH / 2.0, size.z / 2.0)
-		if kind == "shop":
-			_add_shop_awning(body, door_h, size.z / 2.0)
+		_add_roof_cap(body, size, color)
+		# Shops always get the "commercial" set (baked-in awning + shop
+		# name); everything else uses its own district's facade art if we
+		# have one. Falls back to the old procedural window grid + awning
+		# for anything without matching art (e.g. a zone kind added later
+		# with no art yet).
+		var folder: String = "commercial" if kind == "shop" else DISTRICT_TEXTURE_FOLDER.get(zone_kind, "")
+		if folder != "":
+			_apply_facade(body, size, folder)
+		else:
+			_add_facade_windows(body, kind, size, size.x / 2.0 - DOOR_WIDTH / 2.0, size.z / 2.0)
+			if kind == "shop":
+				_add_shop_awning(body, door_h, size.z / 2.0)
 
 	body.set_meta("kind", kind)
 	body.set_meta("size", size)
@@ -375,23 +424,43 @@ func _make_structure(kind: String, zone_kind: String) -> StaticBody3D:
 	return body
 
 
+## Instances a full 3D building model (art/buildings/*.glb) as a structure's
+## visual. No manual axis correction needed: the source Blender rig places
+## every building's front detail (doors/windows) on -Y and its base at Z=0,
+## which Blender's Y-up glTF export turns into +Z and Y=0 respectively --
+## exactly this project's "door faces local +Z, origin is ground level"
+## convention already used by the procedural shell (confirmed by measuring
+## each exported model's bounds, not assumed).
+func _apply_building_model(structure: StaticBody3D, model_path: String) -> void:
+	var scene: PackedScene = load(model_path)
+	if not scene:
+		return
+	var inst := scene.instantiate()
+	if not inst:
+		return
+	structure.add_child(inst)
+
+
 ## Builds the recessed shell (main mass + doorway pillars/lintel/panel) shared
 ## by every walk-in structure, including the school. Returns the door height.
-func _build_door_shell(body: StaticBody3D, size: Vector3, color: Color) -> float:
+## `visible` false keeps every part's collision but hides its mesh -- used
+## when a full 3D model (see _apply_building_model above) is doing the
+## visuals instead, so this shell is collision-only.
+func _build_door_shell(body: StaticBody3D, size: Vector3, color: Color, visible: bool = true) -> float:
 	var door_h: float = min(DOOR_HEIGHT, size.y - 0.4)
 	var half_x := size.x / 2.0
 	var half_z := size.z / 2.0
 	var side_w := half_x - DOOR_WIDTH / 2.0
 
 	# Recessed main mass (back + sides + roof), set behind the front face.
-	_add_box_part(body, Vector3(0, size.y / 2.0, -WALL_THICKNESS / 2.0), Vector3(size.x, size.y, size.z - WALL_THICKNESS), color)
+	_add_box_part(body, Vector3(0, size.y / 2.0, -WALL_THICKNESS / 2.0), Vector3(size.x, size.y, size.z - WALL_THICKNESS), color, true, visible)
 	# Front-left and front-right pillars flanking the doorway.
-	_add_box_part(body, Vector3(-DOOR_WIDTH / 2.0 - side_w / 2.0, size.y / 2.0, half_z - WALL_THICKNESS / 2.0), Vector3(side_w, size.y, WALL_THICKNESS), color)
-	_add_box_part(body, Vector3(DOOR_WIDTH / 2.0 + side_w / 2.0, size.y / 2.0, half_z - WALL_THICKNESS / 2.0), Vector3(side_w, size.y, WALL_THICKNESS), color)
+	_add_box_part(body, Vector3(-DOOR_WIDTH / 2.0 - side_w / 2.0, size.y / 2.0, half_z - WALL_THICKNESS / 2.0), Vector3(side_w, size.y, WALL_THICKNESS), color, true, visible)
+	_add_box_part(body, Vector3(DOOR_WIDTH / 2.0 + side_w / 2.0, size.y / 2.0, half_z - WALL_THICKNESS / 2.0), Vector3(side_w, size.y, WALL_THICKNESS), color, true, visible)
 	# Lintel closing the gap above the door.
-	_add_box_part(body, Vector3(0, door_h + (size.y - door_h) / 2.0, half_z - WALL_THICKNESS / 2.0), Vector3(DOOR_WIDTH, size.y - door_h, WALL_THICKNESS), color)
+	_add_box_part(body, Vector3(0, door_h + (size.y - door_h) / 2.0, half_z - WALL_THICKNESS / 2.0), Vector3(DOOR_WIDTH, size.y - door_h, WALL_THICKNESS), color, true, visible)
 	# Cosmetic door panel, no collision, sitting flush in the opening.
-	_add_box_part(body, Vector3(0, door_h / 2.0, half_z - 0.05), Vector3(DOOR_WIDTH - 0.3, door_h - 0.15, 0.1), Color(0.32, 0.2, 0.12), false)
+	_add_box_part(body, Vector3(0, door_h / 2.0, half_z - 0.05), Vector3(DOOR_WIDTH - 0.3, door_h - 0.15, 0.1), Color(0.32, 0.2, 0.12), false, visible)
 	return door_h
 
 
@@ -494,7 +563,7 @@ func _apply_facade(structure: StaticBody3D, size: Vector3, folder: String) -> vo
 	structure.add_child(mi)
 
 
-func _add_box_part(body: StaticBody3D, pos: Vector3, size: Vector3, color: Color, collide: bool = true) -> void:
+func _add_box_part(body: StaticBody3D, pos: Vector3, size: Vector3, color: Color, collide: bool = true, visible: bool = true) -> void:
 	var mesh := BoxMesh.new()
 	mesh.size = size
 	var mat := StandardMaterial3D.new()
@@ -504,6 +573,7 @@ func _add_box_part(body: StaticBody3D, pos: Vector3, size: Vector3, color: Color
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
 	mi.position = pos
+	mi.visible = visible
 	body.add_child(mi)
 
 	if collide:
@@ -571,7 +641,17 @@ func _add_door_and_interior(structure: StaticBody3D, kind: String, exterior_pos:
 # --- School -------------------------------------------------------------------
 func _build_school() -> void:
 	var res_origin: Vector3 = _zone_pos("residential_north")
-	_school_pos = res_origin + Vector3(-60, 0, -70)
+	# Computed (not a hand-picked constant) so this stays clear of
+	# residential_north's structure grid regardless of that zone's spacing
+	# -- a fixed -60 offset used to sit just past the old, narrower
+	# (16-unit spacing) grid's edge, but the wider NovaTerra-building
+	# spacing now used there (see _define_zones) pushes the grid past that
+	# same offset, landing real houses/buildings on top of the school.
+	var res_zone := _find_zone("residential_north")
+	var per_row := int(ceil(sqrt(float(res_zone["count"]))))
+	var grid_half_x: float = per_row * float(res_zone["spacing"]) / 2.0 + 2.0  # + max placement jitter
+	var school_clearance: float = grid_half_x + 15.0 + 9.0 + 5.0  # school half-width + largest residential building half-width + margin
+	_school_pos = res_origin + Vector3(-school_clearance, 0, -70)
 
 	var body := StaticBody3D.new()
 	var size := Vector3(30, 10, 18)

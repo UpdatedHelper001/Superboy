@@ -275,3 +275,150 @@ The original game structure and procedural world generation were preserved.
   - Verified against the real Godot 4.3 editor as every round before:
     clean `--headless --import`, and 30 simulated seconds of headless play
     with zero script errors.
+
+## Round 7 -- NovaTerra AAA character + building source packs
+
+Two new uploaded packs (`NovaTerra_Realistic_AAA_Character_Source_Pack`,
+`NovaTerra_Realistic_AAA_Building_Pack`) replaced the placeholder art from
+the previous rounds. Both ship as *source pipelines* (raw OBJ geometry +
+Blender Python generators), same as the pack integrated in Round 6, not
+ready-to-import Godot assets -- so this was another reconstruction job, not
+a drag-and-drop.
+
+**Buildings**
+- The building pack's own Blender script had a real bug: `window()` tried
+  to unpack `for px,pz,s in [(x,z+h/2), ...]` against a list of 2-tuples --
+  `s` was never used in the loop body (dead scaffolding), so the fix was
+  dropping it from the unpacking target, not adding a missing list element.
+  Confirmed by reading the loop body before touching it.
+- Ran the (now-fixed) script in real Blender 4.0 (installed via apt; not
+  bundled, so this environment needed it) to generate the 6 building GLBs
+  the pack only ships as source for. Measured each output's actual bounds
+  rather than trusting the script's stated constants -- confirmed the
+  front-facing detail (doors/windows, built at `-D/2` in Blender's Y) lands
+  on +Z after Blender's Y-up glTF export, i.e. exactly this project's
+  existing "door faces local +Z" convention, so no manual axis correction
+  was needed.
+- The pack's default 3-segment bevel produced 60-95k triangles per building
+  (measured) across 300-500 separate mesh parts each -- fine for a hero
+  asset, not for instancing repeatedly across an open world on Android.
+  Dropped to a 1-segment bevel (still reads as softened, non-razor edges)
+  and merged every part sharing a material into one mesh per material
+  (~6-7 parts per building instead of 300-500), cutting Downtown_Office
+  from 95k tris / 506 parts to 22k tris / 6 parts with the same silhouette
+  and material palette -- collapsing draw-call count is the bigger mobile
+  win of the two.
+- New `BUILDING_MODELS` in `WorldGenerator.gd` maps each district to one of
+  the 6 models + that model's real (width, height, depth), replacing the
+  flat facade card **for "building"-kind structures only** -- huts and
+  shops keep the existing flat-card system (`_apply_facade`/commercial
+  awning), since none of the 6 models are hut/shop-scaled and shops need
+  to keep their baked-in name signage. `old_town` and `beach` previously
+  never rolled "building" at all (`_pick_structure_kind`), so `Old_Town.glb`
+  and `Coastal_Villa.glb` would've gone unused -- added a small "building"
+  chance to both (10% / 15%) so every model in the pack is actually reachable.
+  `Abandoned.glb` is a rare (8%) substitute wherever "building" is picked,
+  in any district, for a bit of worn/derelict variety.
+- The procedural door shell (collision + doorway pillars/lintel/roof cap)
+  still runs underneath every model-backed building -- it's the only source
+  of actual collision and the door/interior-link metadata everything else
+  depends on -- but now builds **invisible** (`_add_box_part` gained a
+  `visible` flag) when a real model is present, since the pack's buildings
+  are fully enclosed volumes, not flat cards, and would otherwise z-fight
+  against the shell's own coincident wall/roof faces.
+- New building footprints (up to 28m wide for Industrial_Warehouse) are
+  much larger than the old random 8-14m box the district `spacing` values
+  were tuned around -- bumped spacing per affected zone (e.g. downtown
+  18->26, industrial/port 26/28->34) to keep neighboring structures from
+  overlapping. **Caught by verification, not inspection**: an instrumented
+  headless run (see below) flagged the school overlapping two
+  `residential_north` structures -- its position was a hand-picked offset
+  that used to sit just past that zone's (smaller, pre-this-round) grid
+  edge, and the new spacing pushed the grid past it. Replaced the magic
+  offset with one computed from the zone's actual `count`/`spacing`, so it
+  stays correct if either changes again later.
+
+**Characters**
+- Same reconstruction approach as Round 6 (the source OBJs are disjoint
+  8-vertex box primitives, no UVs/normals/rig), reapplied to this pack's 9
+  archetypes (1 main character + 8 NPCs: Civilian Male/Female, Scout,
+  Guard, Medic, Merchant, Engineer, Boss Heavy). Classification rule this
+  time keyed off box-center **X magnitude** first (legs stay within ~0.2-0.35
+  of center, arms sit out at ~0.5-0.8, a clean gap across every archetype),
+  then height for the centered leftover (torso vs. head) -- verified zero
+  empty/misclassified groups across all 9 files, same bar as Round 6.
+- Preserved each archetype's relative scale instead of flattening every NPC
+  to one height: all 8 NPCs share one scale factor (Civilian Male's raw
+  height -> 1.95m, matching the existing convention), so Boss Heavy comes
+  out ~2.15m and Civilian Female ~1.87m rather than every NPC being
+  identical height. Main character scaled independently to 2.15m as before.
+  Output structure (root node, 6 children named LeftLeg/RightLeg/LeftArm/
+  RightArm/Torso/Head, each pivoted exactly like `CharacterRig._make_limb`
+  already expects) matches the existing reconstructed-rig convention
+  byte-for-byte -- confirmed against the already-shipped
+  `MainCharacter_Default.glb` as a structural reference before building
+  the new ones, not assumed from the docstring alone.
+- `NPC.gd`'s `NPC_MODELS` now points at the 8 new archetypes (civilians
+  most common, Engineer/Merchant as workers, Medic/Guard/Scout occasional,
+  Boss Heavy rarest). Removed the old pack's now-unreferenced
+  `NPC_Civilian/Worker/Elder/Child/Police/Doctor/Gang.glb` and the unused
+  `MainCharacter_Hoodie/Armored/Stealth/Nightwing.glb` outfit variants
+  (nothing loaded them even before this round).
+- **Known trade-off, stated rather than hidden**: this pack has no
+  Elder/Child archetype, so that age variety from Round 6's crowd is gone.
+  Scaling an adult rig down reads as a shrunken adult, not a child, so
+  faking it wasn't worth doing -- flagged here instead.
+- The 6 building-part modular OBJs (Balcony/Door/Roof_Slab/Wall_Brick/
+  Wall_Concrete/Window) weren't used -- the 6 pre-built buildings already
+  cover every district, and these have the same no-UV/no-material/no-rig
+  limitations as everything else in both packs.
+
+**Verification**
+- Real Godot 4.3 (downloaded fresh, same as every round) headless
+  `--import`: zero errors across both new packs, all 9 character GLBs and
+  6 building GLBs, confirmed via `--verbose` that every character import
+  produced the expected `Creating mesh for: LeftLeg/RightLeg/.../Head` set.
+- Wrote an instrumented headless pass (not shipped -- removed after use,
+  same as this project's usual practice) that actually runs
+  `WorldGenerator._ready()` inside the real engine and checks, over the
+  real generated world: zero structure-footprint overlaps (rotation-aware,
+  not axis-aligned-only), zero `door_front` points landing inside a
+  neighboring structure, all 65 model-backed "building" structures
+  actually got their model instanced (0 silent no-ops), and all 147 spawned
+  NPCs have real `LeftLeg`/etc. nodes from a loaded model (0 fallback to
+  the primitive capsule body). First run caught the school/residential
+  overlap above; second run came back clean on all four checks. Re-ran the
+  identical check against an unmodified copy of the original upload to
+  confirm a leftover renderer warning on quit (`Parameter "m" is null`)
+  is a pre-existing headless/dummy-renderer artifact at this scene size,
+  not something this round introduced.
+- Couldn't get real rendered screenshots here either (same Xvfb/GL
+  limitation as the last two art rounds) -- relied on the structural
+  verification above plus directly measuring each GLB's bounds/axis
+  orientation with the same tooling used to build them, rather than
+  trusting the source pack's stated dimensions.
+
+**Addendum: modular parts, and a real triangle budget**
+- Checked whether the 6 unused modular OBJs (`Balcony_3x1_5`, `Door_1x2_2`,
+  `Roof_Slab_4x4`, `Wall_Brick_4x3`, `Wall_Concrete_4x3`, `Window_2x2`)
+  could close the hut/shop gap noted above. They're bare, unbeveled,
+  material-less slabs -- `Wall_Brick_4x3` and `Wall_Concrete_4x3` are in
+  fact geometrically identical, differing only in filename, with no brick
+  pattern or texture baked into either. Assembling huts/shops from these
+  would be a visual downgrade from the existing illustrated flat-card art,
+  not an upgrade, so that trade-off stands as designed rather than as an
+  oversight.
+- Confirmed no other docs/scripts reference the removed old-pack filenames
+  (`NPC_Civilian.glb`, `MainCharacter_Hoodie.glb`, etc.) outside this file's
+  own history, and that `WORKFLOW_FIXES.md`/`ANDROID_BUILD.md` don't
+  reference specific art filenames at all.
+- Estimated the real triangle load from the new buildings across a full
+  generated city (all districts, actual per-zone structure counts and
+  "building" roll rates, including the 8% Abandoned substitution):
+  ~59 model-backed buildings total, ~720k triangles summed across all of
+  them city-wide. Downtown alone accounts for ~540k of that (26 buildings
+  x up to 22.3k tris each, since every downtown structure is "building"
+  kind) -- by far the densest district, worth keeping an eye on if this
+  project profiles slow specifically in downtown on real Android hardware,
+  since that's the one place where camera view distance could put a dozen-
+  plus of these on screen simultaneously.

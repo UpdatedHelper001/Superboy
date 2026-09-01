@@ -39,16 +39,20 @@ const SKIN_TONES := [Color(0.85, 0.7, 0.55), Color(0.65, 0.48, 0.35), Color(0.4,
 const HAIR_COLORS := [Color(0.1, 0.08, 0.06), Color(0.35, 0.22, 0.12), Color(0.6, 0.55, 0.5), Color(0.15, 0.1, 0.08)]
 
 # Weighted by simple repetition (no separate weight table needed) toward a
-# believable city crowd: mostly civilians/workers, occasional
-# police/doctor/elder/child, gang rarest.
+# believable city crowd: mostly civilians, a few working archetypes,
+# specialists occasional, Boss_Heavy rarest. NovaTerra's AAA source pack
+# ships 8 working-age archetypes and no Elder/Child equivalent -- unlike the
+# old pack, so that specific age variety is gone (scaling an adult rig down
+# reads as a shrunken adult, not a child, so it wasn't worth faking).
 const NPC_MODELS := [
-	"res://art/models/NPC_Civilian.glb", "res://art/models/NPC_Civilian.glb", "res://art/models/NPC_Civilian.glb",
-	"res://art/models/NPC_Worker.glb", "res://art/models/NPC_Worker.glb", "res://art/models/NPC_Worker.glb",
-	"res://art/models/NPC_Elder.glb", "res://art/models/NPC_Elder.glb",
-	"res://art/models/NPC_Child.glb", "res://art/models/NPC_Child.glb",
-	"res://art/models/NPC_Police.glb",
-	"res://art/models/NPC_Doctor.glb",
-	"res://art/models/NPC_Gang.glb",
+	"res://art/models/NPC_Civilian_Male.glb", "res://art/models/NPC_Civilian_Male.glb", "res://art/models/NPC_Civilian_Male.glb",
+	"res://art/models/NPC_Civilian_Female.glb", "res://art/models/NPC_Civilian_Female.glb", "res://art/models/NPC_Civilian_Female.glb",
+	"res://art/models/NPC_Engineer.glb", "res://art/models/NPC_Engineer.glb",
+	"res://art/models/NPC_Merchant.glb", "res://art/models/NPC_Merchant.glb",
+	"res://art/models/NPC_Medic.glb",
+	"res://art/models/NPC_Guard.glb",
+	"res://art/models/NPC_Scout.glb",
+	"res://art/models/NPC_Boss_Heavy.glb",
 ]
 
 

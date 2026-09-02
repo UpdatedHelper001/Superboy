@@ -45,14 +45,22 @@ const HAIR_COLORS := [Color(0.1, 0.08, 0.06), Color(0.35, 0.22, 0.12), Color(0.6
 # old pack, so that specific age variety is gone (scaling an adult rig down
 # reads as a shrunken adult, not a child, so it wasn't worth faking).
 const NPC_MODELS := [
-	"res://art/models/NPC_Civilian_Male.glb", "res://art/models/NPC_Civilian_Male.glb", "res://art/models/NPC_Civilian_Male.glb",
-	"res://art/models/NPC_Civilian_Female.glb", "res://art/models/NPC_Civilian_Female.glb", "res://art/models/NPC_Civilian_Female.glb",
+	"res://art/models/NPC_Civilian_Male.glb", "res://art/models/NPC_Civilian_Male.glb",
+	"res://art/models/NPC_Civilian_Female.glb", "res://art/models/NPC_Civilian_Female.glb",
 	"res://art/models/NPC_Engineer.glb", "res://art/models/NPC_Engineer.glb",
 	"res://art/models/NPC_Merchant.glb", "res://art/models/NPC_Merchant.glb",
 	"res://art/models/NPC_Medic.glb",
 	"res://art/models/NPC_Guard.glb",
 	"res://art/models/NPC_Scout.glb",
 	"res://art/models/NPC_Boss_Heavy.glb",
+	# Fully-rigged/animated Quaternius pack -- these carry their own look and
+	# real baked walk animation (see CharacterRig._find_animation_player),
+	# so no leg/arm/torso tinting applies to them.
+	"res://art/models/quaternius/Man_by_Quaternius_-_fjHyMd5Wxw.glb", "res://art/models/quaternius/Man_by_Quaternius_-_fjHyMd5Wxw.glb",
+	"res://art/models/quaternius/Man_in_Long_Sleeves_by_Quaternius_-_DLptRuewTn.glb", "res://art/models/quaternius/Man_in_Long_Sleeves_by_Quaternius_-_DLptRuewTn.glb",
+	"res://art/models/quaternius/Man_in_Suit_by_Quaternius_-_mQnGoME1ez.glb",
+	"res://art/models/quaternius/Business_Man_by_Quaternius_-_JFrLIKqvCH.glb",
+	"res://art/models/quaternius/Punk_by_Quaternius_-_BTALZymknF.glb",
 ]
 
 

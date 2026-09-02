@@ -1,50 +1,66 @@
 class_name CharacterRig
 extends RefCounted
-## Builds a low-poly articulated body (legs/arms on swinging pivots + torso +
-## head, optional hair) on a parent Node3D, and drives a sine-wave walk cycle
-## from a 0..1 speed ratio. Shared by Player.gd and NPC.gd so both characters
-## animate identically without duplicating the limb-building code.
+## Builds an articulated body (thigh+shin legs, upper-arm+forearm arms,
+## torso, head) on a parent Node3D, and drives a walk cycle from a 0..1
+## speed ratio. Shared by Player.gd and NPC.gd.
 ##
 ## Two ways to build a body:
 ## - cfg with a "model_path" (res://art/models/*.glb): loads one of the
-##   reconstructed Nova Terra character rigs. These were rebuilt offline from
-##   the source pack's single merged, unrigged mesh into 6 separate nodes
-##   (LeftLeg/RightLeg/LeftArm/RightArm/Torso/Head), each pre-centered on the
-##   right pivot (hip/shoulder/torso-base/head-base) so they drop straight
-##   into this same pivot-rotation animation system. The source meshes have
-##   no material at all, so color still comes from cfg exactly as below.
+##   reconstructed Nova Terra character rigs -- 10 nodes (root ->
+##   {Left,Right}{Thigh,UpperArm}, each with a {Shin,Forearm} child nested
+##   at the knee/elbow, plus Torso and Head), each pre-centered on its own
+##   pivot so it drops straight into this pivot-rotation animation system.
+##   The source meshes have no material, so color still comes from cfg.
 ## - cfg without "model_path": the original procedural capsule/sphere
-##   primitives, used as a fallback if a model fails to load.
+##   primitives (single rigid limb, no knee/elbow), used as a fallback if
+##   a model fails to load.
 
+var left_thigh: Node3D
+var left_shin: Node3D
+var right_thigh: Node3D
+var right_shin: Node3D
+var left_upper_arm: Node3D
+var left_forearm: Node3D
+var right_upper_arm: Node3D
+var right_forearm: Node3D
+var torso: MeshInstance3D
+var torso_base_y := 0.0
+var walk_phase := 0.0
+var _using_model := false
+
+# Fully-rigged/animated source (e.g. Quaternius packs): a real Skeleton3D +
+# baked Idle/Walk/Run clips, found and played instead of driving pivots by
+# hand. No manual limb rotation, no cfg tinting (these ship their own
+# per-part materials -- that's the point of using a named archetype).
+var _anim_player: AnimationPlayer
+var _idle_anim := ""
+var _walk_anim := ""
+var _run_anim := ""
+
+# Primitive-fallback-only limbs (single rigid pivot per leg/arm).
 var left_leg: Node3D
 var right_leg: Node3D
 var left_arm: Node3D
 var right_arm: Node3D
-var torso: MeshInstance3D
-var torso_base_y := 0.0
-var walk_phase := 0.0
 
 var anim_speed := 6.0
 var leg_swing_max := 0.6
 var arm_swing_max := 0.45
+# Extra knee/elbow flex layered on top of the hip/shoulder swing above --
+# this is what turns a stiff scissoring pendulum into a walk that reads as
+# a real gait: the knee/elbow bends while that limb is swinging through
+# the air and straightens while it's planted/extended, timed off the same
+# walk_phase so it's always in sync with the swing driving it.
+var knee_bend_max := 0.9
+var elbow_bend_max := 0.35
 
 
-## `cfg` keys when using a model: model_path, leg_color, arm_color,
-## torso_color, head_color (all optional -- omit a *_color to leave that
-## part's default gray material).
-## `cfg` keys for the primitive fallback: hip_x, hip_y, leg_len, leg_r,
-## leg_color, shoulder_x, shoulder_y, arm_len, arm_r, arm_color, torso_r,
-## torso_h, torso_y, torso_color, head_r, head_y, head_color, hair_color
-## (optional).
 func build(parent: Node3D, cfg: Dictionary) -> void:
 	if cfg.has("model_path") and _build_from_model(parent, cfg):
 		return
 	_build_primitive(parent, cfg)
 
 
-## Loads a reconstructed character .glb and wires its named parts up as this
-## rig's swing pivots. Returns false (so the caller falls back to the
-## primitive body) if the model can't be loaded for any reason.
 func _build_from_model(parent: Node3D, cfg: Dictionary) -> bool:
 	var scene: PackedScene = load(cfg.model_path)
 	if not scene:
@@ -54,26 +70,81 @@ func _build_from_model(parent: Node3D, cfg: Dictionary) -> bool:
 		return false
 	parent.add_child(inst)
 
-	left_leg = inst.get_node_or_null("root/LeftLeg")
-	right_leg = inst.get_node_or_null("root/RightLeg")
-	left_arm = inst.get_node_or_null("root/LeftArm")
-	right_arm = inst.get_node_or_null("root/RightArm")
-	torso = inst.get_node_or_null("root/Torso") as MeshInstance3D
-	var head := inst.get_node_or_null("root/Head")
-
-	if not (left_leg and right_leg and left_arm and right_arm and torso and head):
+	var ap := _find_animation_player(inst)
+	if ap:
+		var idle := _find_anim(ap, ["idle"])
+		var walk := _find_anim(ap, ["walk"])
+		if idle != "" and walk != "":
+			_anim_player = ap
+			_idle_anim = idle
+			_walk_anim = walk
+			_run_anim = _find_anim(ap, ["run"])
+			_using_model = true
+			_anim_player.play(_idle_anim)
+			return true
 		inst.queue_free()
 		return false
 
-	_tint(left_leg, cfg.get("leg_color"))
-	_tint(right_leg, cfg.get("leg_color"))
-	_tint(left_arm, cfg.get("arm_color"))
-	_tint(right_arm, cfg.get("arm_color"))
+	return _build_from_rig_model(inst, cfg)
+
+
+## The reconstructed-from-boxes Nova Terra rigs: no skeleton, just 10 named
+## pivot nodes this class rotates by hand every frame (see update_walk).
+func _build_from_rig_model(inst: Node, cfg: Dictionary) -> bool:
+	left_thigh = inst.get_node_or_null("root/LeftThigh")
+	left_shin = inst.get_node_or_null("root/LeftThigh/LeftShin")
+	right_thigh = inst.get_node_or_null("root/RightThigh")
+	right_shin = inst.get_node_or_null("root/RightThigh/RightShin")
+	left_upper_arm = inst.get_node_or_null("root/LeftUpperArm")
+	left_forearm = inst.get_node_or_null("root/LeftUpperArm/LeftForearm")
+	right_upper_arm = inst.get_node_or_null("root/RightUpperArm")
+	right_forearm = inst.get_node_or_null("root/RightUpperArm/RightForearm")
+	torso = inst.get_node_or_null("root/Torso") as MeshInstance3D
+	var head := inst.get_node_or_null("root/Head")
+
+	var all_present := left_thigh and left_shin and right_thigh and right_shin \
+		and left_upper_arm and left_forearm and right_upper_arm and right_forearm \
+		and torso and head
+	if not all_present:
+		inst.queue_free()
+		return false
+
+	_tint(left_thigh, cfg.get("leg_color"))
+	_tint(left_shin, cfg.get("leg_color"))
+	_tint(right_thigh, cfg.get("leg_color"))
+	_tint(right_shin, cfg.get("leg_color"))
+	_tint(left_upper_arm, cfg.get("arm_color"))
+	_tint(left_forearm, cfg.get("arm_color"))
+	_tint(right_upper_arm, cfg.get("arm_color"))
+	_tint(right_forearm, cfg.get("arm_color"))
 	_tint(torso, cfg.get("torso_color"))
 	_tint(head, cfg.get("head_color"))
 
 	torso_base_y = torso.position.y
+	_using_model = true
 	return true
+
+
+func _find_animation_player(n: Node) -> AnimationPlayer:
+	if n is AnimationPlayer:
+		return n
+	for c in n.get_children():
+		var found := _find_animation_player(c)
+		if found:
+			return found
+	return null
+
+
+## Case-insensitive substring match against the clip's name (after the
+## "SomeArmature|" prefix these packs all use) -- e.g. "HumanArmature|Man_Walk"
+## and "CharacterArmature|Walk" both match "walk".
+func _find_anim(ap: AnimationPlayer, keywords: Array) -> String:
+	for full_name in ap.get_animation_list():
+		var short := full_name.to_lower()
+		for kw in keywords:
+			if short.contains(kw) and not short.contains("running"):
+				return full_name
+	return ""
 
 
 func _tint(mi: Node3D, color) -> void:
@@ -118,25 +189,72 @@ func _build_primitive(parent: Node3D, cfg: Dictionary) -> void:
 		parent.add_child(hair)
 
 
-## Advances the walk cycle and swings legs/arms; call every physics frame
-## with the character's current horizontal speed / max speed (0..1+).
+## Advances the walk cycle and swings/bends legs and arms; call every
+## physics frame with the character's current horizontal speed / max speed.
 func update_walk(delta: float, speed_ratio: float) -> void:
+	if _anim_player:
+		_update_walk_anim(speed_ratio)
+		return
+
 	if speed_ratio > 0.02:
 		walk_phase += delta * anim_speed * clamp(speed_ratio, 0.35, 1.0)
 	else:
 		walk_phase = lerp(walk_phase, 0.0, delta * 8.0)
 
-	var swing: float = sin(walk_phase) * leg_swing_max * clamp(speed_ratio, 0.0, 1.0)
-	var arm_swing: float = swing * (arm_swing_max / leg_swing_max)
-	if left_leg: left_leg.rotation.x = swing
-	if right_leg: right_leg.rotation.x = -swing
-	if left_arm: left_arm.rotation.x = -arm_swing
-	if right_arm: right_arm.rotation.x = arm_swing
-	if torso: torso.position.y = torso_base_y + absf(sin(walk_phase)) * 0.035 * clamp(speed_ratio, 0.0, 1.0)
+	var ratio: float = clamp(speed_ratio, 0.0, 1.0)
+	var s: float = sin(walk_phase)
+	var c: float = cos(walk_phase)
+	var hip_l: float = s * leg_swing_max * ratio
+	var hip_r: float = -hip_l
+	# Knee bends while that leg is airborne (swinging through), straightens
+	# through its planted/stance half -- cos(phase) is exactly in that
+	# timing relative to the sin(phase) hip swing above.
+	var knee_l: float = maxf(0.0, c) * knee_bend_max * ratio
+	var knee_r: float = maxf(0.0, -c) * knee_bend_max * ratio
+	var arm_ratio: float = arm_swing_max / leg_swing_max
+	var sh_l: float = -hip_l * arm_ratio
+	var sh_r: float = hip_l * arm_ratio
+	var elbow_l: float = maxf(0.0, -c) * elbow_bend_max * ratio
+	var elbow_r: float = maxf(0.0, c) * elbow_bend_max * ratio
+
+	if left_thigh:
+		left_thigh.rotation.x = hip_l
+		if right_thigh: right_thigh.rotation.x = hip_r
+		if left_shin: left_shin.rotation.x = -knee_l
+		if right_shin: right_shin.rotation.x = -knee_r
+		if left_upper_arm: left_upper_arm.rotation.x = sh_l
+		if right_upper_arm: right_upper_arm.rotation.x = sh_r
+		if left_forearm: left_forearm.rotation.x = -elbow_l
+		if right_forearm: right_forearm.rotation.x = -elbow_r
+	else:
+		if left_leg: left_leg.rotation.x = hip_l
+		if right_leg: right_leg.rotation.x = hip_r
+		if left_arm: left_arm.rotation.x = sh_l
+		if right_arm: right_arm.rotation.x = sh_r
+
+	if torso: torso.position.y = torso_base_y + absf(s) * 0.035 * ratio
+
+
+## Skeletal-animation path: crossfade Idle<->Walk (or Run, past a speed
+## threshold, if the pack shipped one) and nudge playback speed with actual
+## movement speed so foot-plant timing doesn't visibly slip.
+func _update_walk_anim(speed_ratio: float) -> void:
+	var ratio: float = clamp(speed_ratio, 0.0, 1.0)
+	if ratio < 0.05:
+		if _anim_player.current_animation != _idle_anim:
+			_anim_player.play(_idle_anim, 0.25)
+		_anim_player.speed_scale = 1.0
+		return
+
+	var use_run := _run_anim != "" and ratio > 0.75
+	var target := _run_anim if use_run else _walk_anim
+	if _anim_player.current_animation != target:
+		_anim_player.play(target, 0.2)
+	_anim_player.speed_scale = clampf(0.7 + ratio * 0.6, 0.7, 1.6)
 
 
 ## Hip/shoulder pivot at `pivot_pos` holding a hanging capsule limb.
-## Rotate the returned pivot's .x to swing the limb.
+## Rotate the returned pivot's .x to swing the limb. Primitive fallback only.
 func _make_limb(parent: Node3D, pivot_pos: Vector3, length: float, radius: float, color: Color) -> Node3D:
 	var pivot := Node3D.new()
 	pivot.position = pivot_pos

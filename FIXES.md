@@ -422,3 +422,52 @@ a drag-and-drop.
   project profiles slow specifically in downtown on real Android hardware,
   since that's the one place where camera view distance could put a dozen-
   plus of these on screen simultaneously.
+
+## Round 8 -- real knee/elbow bend (walk cycle was rigid-leg scissoring)
+
+The 6-node rig (whole leg/arm as one rigid pivoting piece) only ever swung
+at the hip/shoulder, so it walked like a stiff scissor doll -- no knee or
+elbow to bend. Re-ran the character reconstruction with legs split into
+Thigh (hip pivot) -> nested Shin (knee pivot) and arms into UpperArm
+(shoulder pivot) -> nested Forearm (elbow pivot), 10 rig nodes total.
+Classified the split by rank, not a threshold: sorted each limb region's
+boxes by height and always took the bottom two as shin/forearm -- this is
+what actually holds across every archetype (some arms carry a 4th
+shoulder-armor box, legs never do), where an absolute or mean-based z cut
+doesn't.
+`CharacterRig.update_walk` now drives knee/elbow bend off the same
+walk_phase as the hip/shoulder swing (cos-timed so each joint bends
+through its own limb's airborne half of the stride and straightens
+through its planted half). Verified in real Godot: all 9 regenerated
+models load with zero rig-fallback, and a simulated walk cycle produces
+nonzero, bounded, NaN-free knee/hip angles. All 152 world-spawned NPCs
+pick up the new rig cleanly.
+
+## Round 9 -- Quaternius pack added to the NPC pool
+
+5 fully-rigged, pre-animated character GLBs (Man, Man in Long Sleeves, Man
+in Suit, Business Man, Punk -- Quaternius packs, real Skeleton3D + baked
+Idle/Walk/Run clips) dropped into `art/models/quaternius/` and mixed into
+`NPC_MODELS`.
+
+These needed a different path through `CharacterRig` than the NovaTerra
+box-reconstructed rigs -- there's a real skeleton and baked animation here,
+not 10 pivots to rotate by hand. `_build_from_model` now checks for an
+`AnimationPlayer` with recognizable Idle/Walk (and optionally Run) clips
+first (name-matched case-insensitively, since one sub-pack uses
+`HumanArmature|Man_Walk` and the other `CharacterArmature|Walk`); if
+found, `update_walk` just crossfades Idle<->Walk/Run and nudges
+`speed_scale` with actual movement speed, instead of touching any pivot.
+Falls through to the existing NovaTerra node-lookup, then the primitive
+capsule, exactly as before, for anything without a skeleton.
+No cfg color tinting applies to these -- they ship their own per-part
+materials (Shirt/Pants/Skin/etc.), which is the point of naming a specific
+archetype instead of recoloring a generic mesh.
+Checked the Walk/Run clips' animated channels directly against the raw
+glTF before wiring this up: nothing targets the root/armature node, only
+bones from Hips down, so there's no baked root motion to fight with this
+game's own CharacterBody3D movement (would otherwise double the character's
+forward travel per step).
+Verified in real Godot: all 5 models resolve to animation mode with the
+right clips found, and a full world-generation run picked them up cleanly
+across NPCs (0 falling back to the primitive body).

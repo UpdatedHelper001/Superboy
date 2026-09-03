@@ -38,24 +38,12 @@ var _detour_timer := 0.0
 const SKIN_TONES := [Color(0.85, 0.7, 0.55), Color(0.65, 0.48, 0.35), Color(0.4, 0.28, 0.2), Color(0.93, 0.8, 0.68)]
 const HAIR_COLORS := [Color(0.1, 0.08, 0.06), Color(0.35, 0.22, 0.12), Color(0.6, 0.55, 0.5), Color(0.15, 0.1, 0.08)]
 
-# Weighted by simple repetition (no separate weight table needed) toward a
-# believable city crowd: mostly civilians, a few working archetypes,
-# specialists occasional, Boss_Heavy rarest. NovaTerra's AAA source pack
-# ships 8 working-age archetypes and no Elder/Child equivalent -- unlike the
-# old pack, so that specific age variety is gone (scaling an adult rig down
-# reads as a shrunken adult, not a child, so it wasn't worth faking).
+# Weighted by simple repetition (no separate weight table needed): two
+# plain-clothes looks most common, Suit/Business Man/Punk occasional --
+# a believable crowd mix. Fully-rigged/animated Quaternius pack (real
+# skeleton + baked walk animation, see CharacterRig._find_animation_player)
+# -- no leg/arm/torso/head cfg tinting applies, these carry their own look.
 const NPC_MODELS := [
-	"res://art/models/NPC_Civilian_Male.glb", "res://art/models/NPC_Civilian_Male.glb",
-	"res://art/models/NPC_Civilian_Female.glb", "res://art/models/NPC_Civilian_Female.glb",
-	"res://art/models/NPC_Engineer.glb", "res://art/models/NPC_Engineer.glb",
-	"res://art/models/NPC_Merchant.glb", "res://art/models/NPC_Merchant.glb",
-	"res://art/models/NPC_Medic.glb",
-	"res://art/models/NPC_Guard.glb",
-	"res://art/models/NPC_Scout.glb",
-	"res://art/models/NPC_Boss_Heavy.glb",
-	# Fully-rigged/animated Quaternius pack -- these carry their own look and
-	# real baked walk animation (see CharacterRig._find_animation_player),
-	# so no leg/arm/torso tinting applies to them.
 	"res://art/models/quaternius/Man_by_Quaternius_-_fjHyMd5Wxw.glb", "res://art/models/quaternius/Man_by_Quaternius_-_fjHyMd5Wxw.glb",
 	"res://art/models/quaternius/Man_in_Long_Sleeves_by_Quaternius_-_DLptRuewTn.glb", "res://art/models/quaternius/Man_in_Long_Sleeves_by_Quaternius_-_DLptRuewTn.glb",
 	"res://art/models/quaternius/Man_in_Suit_by_Quaternius_-_mQnGoME1ez.glb",

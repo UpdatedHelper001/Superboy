@@ -526,3 +526,34 @@ edge. Added a `StaticBody3D` + `BoxShape3D` matching the road's own
 with a real physics drop test (not just an import check) at all 10 road
 midpoints: a capsule body dropped from 5m above each one now settles at
 ~0.85m (its own half-height) instead of falling through.
+
+## Round 12 -- dropped the NovaTerra NPC archetypes, compacted shared collision code
+
+`NPC_MODELS` now only draws from the 5 Quaternius archetypes (real
+skeleton + baked animation) -- removed the 8 box-reconstructed NovaTerra
+NPC archetypes (Civilian Male/Female, Scout, Guard, Medic, Merchant,
+Engineer, Boss Heavy) from the pool and deleted their now-unreferenced
+`.glb` files (confirmed zero remaining references first, same as every
+prior deletion this project). `MainCharacter_Default.glb` and
+`CharacterRig._build_from_rig_model`/the hand-rotated knee-elbow walk are
+untouched -- Joseph still uses that rig, only the NPC pool changed.
+
+Re-ran the whole-project dead-symbol sweep (every `var`/`const`/`func`
+grepped for a second reference anywhere in scripts/) -- only hits were
+`_process`/`_input`/`_unhandled_input`, which are real Godot engine
+callbacks the sweep can't see are invoked, not actual dead code (checked
+each one has real logic, not a stub, before ruling them out).
+
+Compaction: `_build_ground`'s zone-floor collision and last round's new
+road collision were near-identical 6-line "StaticBody3D + BoxShape3D"
+blocks -- pulled into one `_flat_collision(size, pos)` helper, used by
+both. Left the older, already-hardened collision code in
+`_add_box_part`/`_build_door_shell`/`InteriorBuilder.gd` alone: those are
+tested across many rounds and touching them for cosmetic consolidation
+alone isn't worth the regression risk.
+
+Verified in real Godot: main character still resolves through the rig-
+model path (unaffected), all 141 world-spawned NPCs now hit the animation
+path with zero primitive-fallback, zero structure overlaps, and the
+road-collision physics drop test from last round still passes at all 10
+midpoints after the `_flat_collision` refactor.

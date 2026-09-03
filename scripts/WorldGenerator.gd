@@ -240,14 +240,21 @@ func _build_ground(zone: Dictionary) -> void:
 	mi.position = origin
 	add_child(mi)
 
+	add_child(_flat_collision(Vector3(size.x, 0.1, size.y), origin))
+
+
+## A StaticBody3D with one flat BoxShape3D collider, at `pos` in whatever
+## space the caller adds it to (world if added to `self`, local if added as
+## a child of an already-positioned node like a road's Node3D).
+func _flat_collision(size: Vector3, pos: Vector3 = Vector3.ZERO) -> StaticBody3D:
 	var body := StaticBody3D.new()
 	var col := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
-	shape.size = Vector3(size.x, 0.1, size.y)
+	shape.size = size
 	col.shape = shape
-	body.position = origin
+	body.position = pos
 	body.add_child(col)
-	add_child(body)
+	return body
 
 
 func _ground_color(kind: String) -> Color:
@@ -974,13 +981,7 @@ func _build_connecting_roads() -> void:
 		# so the whole stretch between them (i.e. every connecting road)
 		# was an invisible hole the player fell through the moment they
 		# walked off either zone's own ground footprint.
-		var road_body := StaticBody3D.new()
-		var road_col := CollisionShape3D.new()
-		var road_shape := BoxShape3D.new()
-		road_shape.size = Vector3(length, 0.1, ROAD_WIDTH)
-		road_col.shape = road_shape
-		road_body.add_child(road_col)
-		road.add_child(road_body)
+		road.add_child(_flat_collision(Vector3(length, 0.1, ROAD_WIDTH)))
 
 		var mesh := PlaneMesh.new()
 		mesh.size = Vector2(length, ROAD_WIDTH)

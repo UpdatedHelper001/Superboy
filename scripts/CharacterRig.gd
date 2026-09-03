@@ -26,7 +26,6 @@ var right_forearm: Node3D
 var torso: MeshInstance3D
 var torso_base_y := 0.0
 var walk_phase := 0.0
-var _using_model := false
 
 # Fully-rigged/animated source (e.g. Quaternius packs): a real Skeleton3D +
 # baked Idle/Walk/Run clips, found and played instead of driving pivots by
@@ -70,6 +69,9 @@ func _build_from_model(parent: Node3D, cfg: Dictionary) -> bool:
 		return false
 	parent.add_child(inst)
 
+	if cfg.has("target_height"):
+		_scale_to_height(inst, cfg.target_height)
+
 	var ap := _find_animation_player(inst)
 	if ap:
 		var idle := _find_anim(ap, ["idle"])
@@ -79,13 +81,74 @@ func _build_from_model(parent: Node3D, cfg: Dictionary) -> bool:
 			_idle_anim = idle
 			_walk_anim = walk
 			_run_anim = _find_anim(ap, ["run"])
-			_using_model = true
 			_anim_player.play(_idle_anim)
 			return true
 		inst.queue_free()
 		return false
 
 	return _build_from_rig_model(inst, cfg)
+
+
+## Measures how tall the just-instanced model actually renders at (world
+## space, whatever native scale the source pack used) and rescales `inst`
+## so it comes out to `target_height` -- one general fix that works for any
+## pack's native units instead of a hand-picked scale constant per archetype
+## (which is what silently let some NovaTerra archetypes end up as tall as
+## the main character, and left the unrelated-native-scale Quaternius pack
+## rendering at several times human height).
+func _scale_to_height(inst: Node, target_height: float) -> void:
+	var h := _measure_height(inst)
+	if h > 0.001:
+		inst.scale = Vector3.ONE * (target_height / h)
+
+
+func _measure_height(inst: Node) -> float:
+	# Prefer the skeleton (if any): a skinned MeshInstance3D's own get_aabb()
+	# reflects only its unposed bind pose, not the actual rendered size, so
+	# bone world positions are the only reliable measurement for a rigged
+	# character like the Quaternius packs.
+	for skel in _find_all_of_type(inst, "Skeleton3D"):
+		var s: Skeleton3D = skel
+		var min_y := INF
+		var max_y := -INF
+		for i in range(s.get_bone_count()):
+			var bname := s.get_bone_name(i)
+			if bname.contains("Pole") or bname.contains("IK") or bname.contains("Target"):
+				continue
+			var world_y: float = (s.global_transform * s.get_bone_global_pose(i).origin).y
+			min_y = minf(min_y, world_y)
+			max_y = maxf(max_y, world_y)
+		if max_y > min_y:
+			return max_y - min_y
+
+	# No skeleton (the NovaTerra reconstructed rigs and the primitive
+	# fallback aren't skinned): aggregate ordinary MeshInstance3D bounds.
+	var min_y2 := INF
+	var max_y2 := -INF
+	for mi in _find_all_of_type(inst, "MeshInstance3D"):
+		var m: MeshInstance3D = mi
+		var aabb: AABB = m.get_aabb()
+		if aabb.size == Vector3.ZERO:
+			continue
+		var gt: Transform3D = m.global_transform
+		for c in range(8):
+			var corner := aabb.position + Vector3(
+				aabb.size.x * float(c & 1),
+				aabb.size.y * float((c >> 1) & 1),
+				aabb.size.z * float((c >> 2) & 1))
+			var wy: float = (gt * corner).y
+			min_y2 = minf(min_y2, wy)
+			max_y2 = maxf(max_y2, wy)
+	return max_y2 - min_y2 if max_y2 > min_y2 else 0.0
+
+
+func _find_all_of_type(n: Node, cls: String) -> Array:
+	var out := []
+	if n.get_class() == cls:
+		out.append(n)
+	for c in n.get_children():
+		out.append_array(_find_all_of_type(c, cls))
+	return out
 
 
 ## The reconstructed-from-boxes Nova Terra rigs: no skeleton, just 10 named
@@ -121,7 +184,6 @@ func _build_from_rig_model(inst: Node, cfg: Dictionary) -> bool:
 	_tint(head, cfg.get("head_color"))
 
 	torso_base_y = torso.position.y
-	_using_model = true
 	return true
 
 

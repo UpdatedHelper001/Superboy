@@ -471,3 +471,58 @@ forward travel per step).
 Verified in real Godot: all 5 models resolve to animation mode with the
 right clips found, and a full world-generation run picked them up cleanly
 across NPCs (0 falling back to the primitive body).
+
+## Round 10 -- uniform NPC height
+
+Boss Heavy (NovaTerra, deliberately 2.15m from Round 7's "preserve relative
+archetype scale" choice) ended up exactly as tall as the main character,
+and the Quaternius pack (Round 9) was never height-corrected at all --
+its native units render around 4.7m, several times human height. Both are
+symptoms of the same underlying gap: nothing normalized a model's actual
+rendered size against any common reference once it left its own source
+pipeline's hands.
+
+Fixed at the root instead of hand-tuning either pack: `CharacterRig` now
+measures how tall a just-instanced model *actually renders* (skeleton bone
+world-positions for a skinned model, aggregated MeshInstance3D bounds
+otherwise -- a skinned mesh's own `get_aabb()` only reflects its unposed
+bind pose, not real size) and rescales it to a `target_height` cfg key.
+`NPC.gd` now passes `"target_height": 1.95` for every archetype in both
+packs; `Player.gd` doesn't (its own model is already correctly authored at
+2.15m), so the main character stays visually distinct from the crowd. This
+self-corrects for any future pack regardless of its native units, rather
+than adding another per-asset scale constant to maintain.
+Verified in real Godot: all 13 current NPC archetypes measure to within
+3cm of 1.95m post-scale, main character unaffected at 2.15m, and the walk
+cycle/skeletal-animation playback both still work normally on a scaled
+instance (scaling `inst` doesn't touch any child node's local animated
+transform, so nothing about Round 8/9's animation logic needed to change).
+
+## Round 11 -- Lamborghini/Sports Car/Dominus added, dead code swept, road collision fixed
+
+Added the 3 uploaded models: two parked-car archetypes (Sports Car,
+Lamborghini Aventador -- the latter authored in centimeters, not meters;
+cross-checked its 0.01 scale correction against the real car's known
+~1.14m/4.78m dimensions rather than eyeballing it) scattered along both
+sides of every connecting road, and Dominus as a one-off landmark prop in
+Greenwood Park. Both go through the same `_add_box_part(..., visible:
+false)` pattern as building models -- a plain invisible collision box sized
+to the asset, with the real model as a non-colliding visual on top.
+
+Dead-code sweep: removed `FlyCam.gd` (an editor-only debug camera script,
+never referenced by any scene or attached anywhere -- confirmed via a
+whole-project grep, not just a guess) and `CharacterRig._using_model` (set
+in two places, read nowhere -- same grep-for-zero-other-references check
+run across every var/const/func in scripts/, one hit).
+
+**Real bug found while verifying the above, unrelated to either change:**
+connecting roads (`_build_connecting_roads`) have only ever been a bare
+visual `Node3D` -- mesh, curbs, dashed line -- with no `CollisionShape3D`
+of any kind. Zone ground (`_build_ground`) only covers each zone's own
+footprint and zones don't touch, so every road was an invisible hole the
+player fell through the moment they walked past their starting zone's
+edge. Added a `StaticBody3D` + `BoxShape3D` matching the road's own
+(length x ROAD_WIDTH) footprint as an actual collision surface. Verified
+with a real physics drop test (not just an import check) at all 10 road
+midpoints: a capsule body dropped from 5m above each one now settles at
+~0.85m (its own half-height) instead of falling through.

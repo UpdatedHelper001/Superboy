@@ -1,0 +1,39 @@
+[remap]
+
+importer="texture"
+type="CompressedTexture2D"
+uid="uid://q7v0c0u5ihw8"
+path.s3tc="res://.godot/imported/Lamborghini_Aventador_Lamborginhi Aventador_spec.png-b833a59b568958dde78e9e8ff6c99d0c.s3tc.ctex"
+path.etc2="res://.godot/imported/Lamborghini_Aventador_Lamborginhi Aventador_spec.png-b833a59b568958dde78e9e8ff6c99d0c.etc2.ctex"
+metadata={
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
+}
+generator_parameters={
+"md5": "e62796dfe8586c033617c25734a4f979"
+}
+
+[deps]
+
+source_file="res://art/models/vehicles/Lamborghini_Aventador_Lamborginhi Aventador_spec.png"
+dest_files=["res://.godot/imported/Lamborghini_Aventador_Lamborginhi Aventador_spec.png-b833a59b568958dde78e9e8ff6c99d0c.s3tc.ctex", "res://.godot/imported/Lamborghini_Aventador_Lamborginhi Aventador_spec.png-b833a59b568958dde78e9e8ff6c99d0c.etc2.ctex"]
+
+[params]
+
+compress/mode=2
+compress/high_quality=false
+compress/lossy_quality=0.7
+compress/hdr_compression=1
+compress/normal_map=0
+compress/channel_pack=0
+mipmaps/generate=true
+mipmaps/limit=-1
+roughness/mode=0
+roughness/src_normal=""
+process/fix_alpha_border=true
+process/premult_alpha=false
+process/normal_map_invert_y=false
+process/hdr_as_srgb=false
+process/hdr_clamp_exposure=false
+process/size_limit=0
+detect_3d/compress_to=1

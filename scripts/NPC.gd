@@ -89,6 +89,7 @@ func _build_visual() -> void:
 	_rig.anim_speed = 6.0
 	_rig.build(self, {
 		"model_path": NPC_MODELS.pick_random(),
+		"target_height": 1.95,  # every NPC archetype/pack ends up this tall, regardless of its native scale -- see CharacterRig._scale_to_height
 		"leg_color": limb_color,
 		"arm_color": role_color,
 		"torso_color": role_color,

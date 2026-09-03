@@ -47,6 +47,25 @@ const BUILDING_MODELS := {
 const ABANDONED_BUILDING := {"path": "res://art/buildings/Abandoned.glb", "size": Vector3(14, 15, 12)}
 const ABANDONED_BUILDING_CHANCE := 0.08
 
+# --- Parked cars along connecting roads --------------------------------------
+# Both authored with length along local -Z; "yaw_offset" rotates that onto
+# the road's own local +X (the axis the road mesh/curbs/dashes are laid out
+# along in _build_connecting_roads) so they sit parallel to the curb instead
+# of nose-first into traffic.
+const CAR_MODELS := [
+	{"path": "res://art/models/vehicles/Sports_Car.glb", "scale": 1.0, "size": Vector3(1.9, 1.2, 4.0), "yaw_offset": 90.0},
+	# Authored in centimeters (raw bounds ~230x117x489), not meters -- scaled
+	# 0.01 to match every other asset in the project. Cross-checked against a
+	# real Aventador's dimensions (~1.14m tall, ~4.78m long) rather than
+	# guessed: within a few cm on every axis at this factor.
+	{"path": "res://art/models/vehicles/Lamborghini_Aventador.glb", "scale": 0.01, "size": Vector3(2.3, 1.17, 4.89), "yaw_offset": 90.0},
+]
+const CAR_SPACING := 9.0
+const CAR_FILL_CHANCE := 0.55
+
+# --- One-off landmark prop ----------------------------------------------------
+const LANDMARK := {"path": "res://art/models/landmarks/Dominus.glb", "size": Vector3(2.1, 0.6, 2.4)}
+
 # --- District signage (art/decals) -------------------------------------------
 # Decals are a wide horizontal pill, vertically centered in the same
 # 1280x720 canvas -- a different crop than the building facades above.
@@ -105,6 +124,7 @@ func _ready() -> void:
 	_build_connecting_roads()
 	_build_school()
 	_place_district_signs()
+	_place_landmark()
 
 	# Building ~180 structures (each with a separate interior room) and then
 	# ~150+ NPCs (each with a multi-part articulated body) all in a single
@@ -670,6 +690,20 @@ func _build_school() -> void:
 	_add_classrooms(hall_interior)
 
 
+func _place_landmark() -> void:
+	var pos: Vector3 = _zone_pos("greenwood_park")
+	var holder := StaticBody3D.new()
+	holder.position = pos
+	add_child(holder)
+	var size: Vector3 = LANDMARK.size
+	_add_box_part(holder, Vector3(0, size.y / 2.0, 0), size, Color(0.2, 0.2, 0.2), true, false)
+	var scene: PackedScene = load(LANDMARK.path)
+	if scene:
+		var inst := scene.instantiate()
+		if inst:
+			holder.add_child(inst)
+
+
 func _add_classrooms(hall_interior: Node3D) -> void:
 	var subjects := [
 		{"name": "Maths", "teacher": "Mr. Aldridge", "color": Color(0.2, 0.4, 0.8)},
@@ -935,6 +969,19 @@ func _build_connecting_roads() -> void:
 		road.rotation_degrees.y = yaw
 		add_child(road)
 
+		# The road surface itself had no collision at all -- only the
+		# per-zone ground boxes (_build_ground) do, and zones don't touch,
+		# so the whole stretch between them (i.e. every connecting road)
+		# was an invisible hole the player fell through the moment they
+		# walked off either zone's own ground footprint.
+		var road_body := StaticBody3D.new()
+		var road_col := CollisionShape3D.new()
+		var road_shape := BoxShape3D.new()
+		road_shape.size = Vector3(length, 0.1, ROAD_WIDTH)
+		road_col.shape = road_shape
+		road_body.add_child(road_col)
+		road.add_child(road_body)
+
 		var mesh := PlaneMesh.new()
 		mesh.size = Vector2(length, ROAD_WIDTH)
 		mesh.material = road_mat
@@ -966,3 +1013,37 @@ func _build_connecting_roads() -> void:
 			dash.mesh = dash_mesh
 			dash.position = Vector3(start_x + i * stride, 0.03, 0)
 			road.add_child(dash)
+
+		_place_parked_cars(road, length)
+
+
+## Parked cars along one road's curb, added as children of that road's own
+## Node3D (see above) so they inherit its position/yaw for free instead of
+## re-deriving road-space world trig here.
+func _place_parked_cars(road: Node3D, length: float) -> void:
+	var count := int(length / CAR_SPACING)
+	if count < 1:
+		return
+	var start_x := -length / 2.0 + CAR_SPACING / 2.0
+	for i in range(count):
+		if randf() > CAR_FILL_CHANCE:
+			continue
+		var car_cfg: Dictionary = CAR_MODELS.pick_random()
+		var side := -1.0 if (i % 2 == 0) else 1.0
+		var local_x: float = start_x + i * CAR_SPACING + randf_range(-1.0, 1.0)
+		var local_z: float = side * (ROAD_WIDTH / 2.0 + 1.3)  # just outside the curb strip
+
+		var holder := StaticBody3D.new()
+		holder.position = Vector3(local_x, 0, local_z)
+		holder.rotation_degrees.y = car_cfg.yaw_offset + (180.0 if side > 0 else 0.0)
+		road.add_child(holder)
+
+		var size: Vector3 = car_cfg.size
+		_add_box_part(holder, Vector3(0, size.y / 2.0, 0), size, Color(0.15, 0.15, 0.15), true, false)
+
+		var scene: PackedScene = load(car_cfg.path)
+		if scene:
+			var inst := scene.instantiate()
+			if inst:
+				inst.scale = Vector3.ONE * car_cfg.scale
+				holder.add_child(inst)

@@ -67,6 +67,8 @@ func _build_from_model(parent: Node3D, cfg: Dictionary) -> bool:
 	var inst := scene.instantiate()
 	if not inst:
 		return false
+	if cfg.has("facing_offset_y"):
+		inst.rotation_degrees.y = cfg.facing_offset_y
 	parent.add_child(inst)
 
 	if cfg.has("target_height"):

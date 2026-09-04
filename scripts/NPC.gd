@@ -35,6 +35,15 @@ var _stuck_check_pos := Vector3.ZERO
 var _detour_target := Vector3.ZERO
 var _detour_timer := 0.0
 
+# NPCs far from the player don't need full-rate AI/physics -- nobody's
+# looking at them. Cuts real, continuous per-frame cost (schedule logic,
+# move_and_slide, skeletal animation playback) across the whole crowd,
+# proportional to how much of the world is currently off-screen.
+const FAR_UPDATE_DISTANCE := 90.0
+const FAR_UPDATE_INTERVAL := 0.5
+var _player: Node3D = null
+var _far_timer := 0.0
+
 const SKIN_TONES := [Color(0.85, 0.7, 0.55), Color(0.65, 0.48, 0.35), Color(0.4, 0.28, 0.2), Color(0.93, 0.8, 0.68)]
 const HAIR_COLORS := [Color(0.1, 0.08, 0.06), Color(0.35, 0.22, 0.12), Color(0.6, 0.55, 0.5), Color(0.15, 0.1, 0.08)]
 
@@ -43,12 +52,22 @@ const HAIR_COLORS := [Color(0.1, 0.08, 0.06), Color(0.35, 0.22, 0.12), Color(0.6
 # a believable crowd mix. Fully-rigged/animated Quaternius pack (real
 # skeleton + baked walk animation, see CharacterRig._find_animation_player)
 # -- no leg/arm/torso/head cfg tinting applies, these carry their own look.
+# facing_offset_y: all 5 of these ship with their Walk clip's forward-swing
+# aimed at local +Z, opposite this project's -Z-is-forward convention
+# (Player/NPC movement code turns the body via look_at(), which points
+# local -Z at the travel direction) -- verified by sampling the animated
+# world-space swing direction of Foot.L during its airborne phase in real
+# Godot, not assumed from the pack's name or folder. Without this, the
+# body still moves correctly frame to frame, but the walk cycle plays as
+# if stepping toward where it came from.
 const NPC_MODELS := [
-	"res://art/models/quaternius/Man_by_Quaternius_-_fjHyMd5Wxw.glb", "res://art/models/quaternius/Man_by_Quaternius_-_fjHyMd5Wxw.glb",
-	"res://art/models/quaternius/Man_in_Long_Sleeves_by_Quaternius_-_DLptRuewTn.glb", "res://art/models/quaternius/Man_in_Long_Sleeves_by_Quaternius_-_DLptRuewTn.glb",
-	"res://art/models/quaternius/Man_in_Suit_by_Quaternius_-_mQnGoME1ez.glb",
-	"res://art/models/quaternius/Business_Man_by_Quaternius_-_JFrLIKqvCH.glb",
-	"res://art/models/quaternius/Punk_by_Quaternius_-_BTALZymknF.glb",
+	{"path": "res://art/models/quaternius/Man_by_Quaternius_-_fjHyMd5Wxw.glb", "facing_offset_y": 180.0},
+	{"path": "res://art/models/quaternius/Man_by_Quaternius_-_fjHyMd5Wxw.glb", "facing_offset_y": 180.0},
+	{"path": "res://art/models/quaternius/Man_in_Long_Sleeves_by_Quaternius_-_DLptRuewTn.glb", "facing_offset_y": 180.0},
+	{"path": "res://art/models/quaternius/Man_in_Long_Sleeves_by_Quaternius_-_DLptRuewTn.glb", "facing_offset_y": 180.0},
+	{"path": "res://art/models/quaternius/Man_in_Suit_by_Quaternius_-_mQnGoME1ez.glb", "facing_offset_y": 180.0},
+	{"path": "res://art/models/quaternius/Business_Man_by_Quaternius_-_JFrLIKqvCH.glb", "facing_offset_y": 180.0},
+	{"path": "res://art/models/quaternius/Punk_by_Quaternius_-_BTALZymknF.glb", "facing_offset_y": 180.0},
 ]
 
 
@@ -75,8 +94,10 @@ func _build_visual() -> void:
 	_rig.leg_swing_max = 0.6
 	_rig.arm_swing_max = 0.45
 	_rig.anim_speed = 6.0
+	var archetype: Dictionary = NPC_MODELS.pick_random()
 	_rig.build(self, {
-		"model_path": NPC_MODELS.pick_random(),
+		"model_path": archetype.path,
+		"facing_offset_y": archetype.facing_offset_y,
 		"target_height": 1.95,  # every NPC archetype/pack ends up this tall, regardless of its native scale -- see CharacterRig._scale_to_height
 		"leg_color": limb_color,
 		"arm_color": role_color,
@@ -92,6 +113,17 @@ func _build_visual() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if _player == null:
+		var players := get_tree().get_nodes_in_group("player")
+		if not players.is_empty():
+			_player = players[0]
+	if _player != null and global_position.distance_to(_player.global_position) > FAR_UPDATE_DISTANCE:
+		_far_timer -= delta
+		if _far_timer > 0.0:
+			return
+		_far_timer = FAR_UPDATE_INTERVAL
+		delta = FAR_UPDATE_INTERVAL  # so the schedule clock/wander timers stay roughly caught up despite the skipped frames
+
 	if not is_on_floor():
 		velocity.y -= GRAVITY * delta
 	else:

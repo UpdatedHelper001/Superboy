@@ -557,3 +557,43 @@ model path (unaffected), all 141 world-spawned NPCs now hit the animation
 path with zero primitive-fallback, zero structure overlaps, and the
 road-collision physics drop test from last round still passes at all 10
 midpoints after the `_flat_collision` refactor.
+
+## Round 13 -- NPC walk direction, road connectivity, and performance
+
+**NPC walking backward:** confirmed first that the actual `move_and_slide()`
+position never reverses (a real physics-driven walk test showed 0 backward
+frames across a full commute) -- the bug was purely visual. Measured the
+Quaternius Walk clip's own forward-swing direction in real Godot (average
+`dz` of `Foot.L` while airborne, not a single noisy sample near the swing
+peak, which is what an earlier single-frame check had gotten wrong) against
+this project's -Z-is-forward convention: all 5 archetypes swing toward
+local +Z -- backward relative to `look_at()`-driven movement, for both
+rig families in this pack (`HumanArmature|Man_Walk` and
+`CharacterArmature|Walk`). Added `facing_offset_y` to `NPC_MODELS`
+(180 for all 5, following the same empirically-measured-correction pattern
+already used for `BUILDING_MODELS`/`CAR_MODELS`), applied in
+`CharacterRig._build_from_model` before the model is added to the tree.
+Reverified the swing direction through the real `CharacterRig.build()`
+path afterward, not just the raw fix in isolation.
+
+**Roads not reaching anywhere:** roads spanned zone CENTER to zone CENTER,
+so most of a road's length actually ran through the zone's own interior
+(already covered by that zone's ground collision) -- and since structures
+scatter right up to a zone's edge, 7 structures measurably overlapped a
+road's collision box outright. Trimmed each road to start/end where it
+actually leaves the zone's footprint (standard ray-to-box-edge distance,
+since zone ground is never rotated) instead of at the zone's center.
+Total road length across all 10 links dropped ~77% (e.g. downtown<->
+old_town: 204 -> 31 units) with zero remaining road/structure overlap,
+confirmed geometrically, and zero regression on the Round 11 road-collision
+fix (physics drop test still passes at all 10 new midpoints).
+
+**FPS:** the road trim alone cut parked-car count from 137 to ~35-45 (fewer,
+shorter roads need far fewer 9-unit-spaced slots) -- a real, if incidental,
+geometry win. Separately, `NPC.gd` now throttles any NPC more than 90m
+from the player to a full update just twice a second instead of every
+physics frame (schedule/wander logic, `move_and_slide()`, and -- the
+expensive part for the Quaternius archetypes -- skeletal animation
+playback all skip entirely on the throttled frames). Verified an NPC
+placed 500m from the player still makes real forward progress under
+throttling (not frozen), while one within range is untouched.

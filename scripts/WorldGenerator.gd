@@ -967,9 +967,28 @@ func _build_connecting_roads() -> void:
 	for pair in links:
 		var a := _zone_pos(pair[0])
 		var b := _zone_pos(pair[1])
-		var mid := (a + b) / 2.0
-		var length := a.distance_to(b)
-		var yaw := rad_to_deg(atan2(b.z - a.z, b.x - a.x)) * -1.0 + 90.0
+		var dir_ab: Vector2 = Vector2(b.x - a.x, b.z - a.z).normalized()
+
+		# Roads used to span zone CENTER to zone CENTER, so most of a
+		# road's length duplicated collision the zone's own ground already
+		# provides -- and since structures are scattered right up to a
+		# zone's edge, that overlap sometimes landed the road's box
+		# directly on top of a building's (confirmed by comparing footprints
+		# directly, not guessed). Trim each end back to where the road
+		# actually leaves that zone's own ground footprint, along the
+		# ray toward the other zone (standard center-to-box-edge distance
+		# for an axis-aligned box, since _build_ground never rotates a
+		# zone's ground plane).
+		var size_a: Vector2 = _find_zone(pair[0])["size"]
+		var size_b: Vector2 = _find_zone(pair[1])["size"]
+		var edge_a: float = minf((size_a.x / 2.0) / maxf(absf(dir_ab.x), 0.0001), (size_a.y / 2.0) / maxf(absf(dir_ab.y), 0.0001))
+		var edge_b: float = minf((size_b.x / 2.0) / maxf(absf(dir_ab.x), 0.0001), (size_b.y / 2.0) / maxf(absf(dir_ab.y), 0.0001))
+		var start: Vector3 = a + Vector3(dir_ab.x, 0, dir_ab.y) * edge_a
+		var end: Vector3 = b - Vector3(dir_ab.x, 0, dir_ab.y) * edge_b
+
+		var mid := (start + end) / 2.0
+		var length := start.distance_to(end)
+		var yaw := rad_to_deg(atan2(end.z - start.z, end.x - start.x)) * -1.0 + 90.0
 
 		var road := Node3D.new()
 		road.position = mid

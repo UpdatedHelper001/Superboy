@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Joseph — The Man He Hated</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="loading"><div class="load-title">JOSEPH</div><div class="load-sub">THE MAN HE HATED</div><div class="bar"><i id="bar"></i></div><small>Loading city...</small></div>
+
+<div id="hud">
+  <div class="top"><div><b id="chapter">PROLOGUE</b><span id="mission">The Last Day</span></div><div id="money">₹ 1,200</div></div>
+  <div class="bottom"><div id="objective">Go to OOO Corporation.</div><div id="hint">WASD move • Shift sprint • E interact • Mouse look</div></div>
+</div>
+
+<div id="dialogue" class="panel hidden"><div id="speaker"></div><p id="line"></p><button id="next">Continue</button></div>
+<div id="choice" class="panel hidden"><h2 id="choiceTitle"></h2><p id="choiceText"></p><div id="choices"></div></div>
+<div id="map" class="panel hidden"><h2>City Map</h2><canvas id="mapCanvas" width="520" height="360"></canvas><button onclick="game.toggleMap()">Close</button></div>
+<div id="ending" class="panel hidden"><h1>THE MAN IN THE MIRROR</h1><p id="endingText"></p><button onclick="location.reload()">Restart</button></div>
+
+<div id="touch">
+  <div class="stick" id="stick"><div></div></div>
+  <div class="touch-buttons"><button data-key="e">E</button><button data-key="Shift">RUN</button><button id="mapBtn">MAP</button></div>
+</div>
+
+<script type="module" src="game.js"></script>
+</body>
+</html>

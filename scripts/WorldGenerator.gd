@@ -100,7 +100,8 @@ const ZONE_LINKS := [
 var _interior_counter := 0
 var _house_positions: Array = []  # Array of {"pos": Vector3, "front": Vector3} — "front" is the world-space point just outside that house's actual door
 var _workplaces: Array = []       # Array of {"pos": Vector3, "kind": String, "front": Vector3}
-var _school_pos: Vector3
+var _ooo_hq_pos: Vector3
+var _palace_pos: Vector3
 var ZONES: Array = []
 
 const PlayerScript := preload("res://scripts/Player.gd")
@@ -117,12 +118,14 @@ const NPCS_PER_CHUNK := 6
 
 func _ready() -> void:
 	randomize()
+	StoryManager.act_changed.connect(_on_story_act_changed)
 	_define_zones()
 	_build_environment()
 	for z in ZONES:
 		_build_ground(z)
 	_build_connecting_roads()
-	_build_school()
+	_build_ooo_hq()
+	_build_presidential_palace()
 	_place_district_signs()
 	_place_landmark()
 
@@ -665,8 +668,16 @@ func _add_door_and_interior(structure: StaticBody3D, kind: String, exterior_pos:
 	return interior
 
 
-# --- School -------------------------------------------------------------------
-func _build_school() -> void:
+# --- OOO Corporation HQ --------------------------------------------------------
+## Formerly "the school" -- repurposed once Joseph's story became the political
+## thriller in StoryContent/StoryManager instead of the earlier high-school-boy
+## concept. This is where the Prologue's layoff happens and where Act V's OOO
+## contract-return payoff lands. Geometry/interior layout ("school_hall" /
+## "school_classroom" kind strings below) are untouched placeholders -- same
+## shape as before, just recast as office building rather than school, since
+## reshaping InteriorBuilder's actual room geometry is art/layout work for
+## later, not something this pass needed to unblock.
+func _build_ooo_hq() -> void:
 	var res_origin: Vector3 = _zone_pos("residential_north")
 	# Computed (not a hand-picked constant) so this stays clear of
 	# residential_north's structure grid regardless of that zone's spacing
@@ -678,7 +689,7 @@ func _build_school() -> void:
 	var per_row := int(ceil(sqrt(float(res_zone["count"]))))
 	var grid_half_x: float = per_row * float(res_zone["spacing"]) / 2.0 + 2.0  # + max placement jitter
 	var school_clearance: float = grid_half_x + 15.0 + 9.0 + 5.0  # school half-width + largest residential building half-width + margin
-	_school_pos = res_origin + Vector3(-school_clearance, 0, -70)
+	_ooo_hq_pos = res_origin + Vector3(-school_clearance, 0, -70)
 
 	var body := StaticBody3D.new()
 	var size := Vector3(30, 10, 18)
@@ -687,14 +698,43 @@ func _build_school() -> void:
 	_add_roof_cap(body, size, color)
 	_apply_facade(body, size, "civic")
 
-	body.set_meta("kind", "school")
+	body.set_meta("kind", "ooo_corp_hq")
 	body.set_meta("size", size)
 	body.set_meta("door_h", door_h)
-	body.position = _school_pos
+	body.position = _ooo_hq_pos
 	add_child(body)
 
-	var hall_interior := _add_door_and_interior(body, "school_hall", _school_pos)
-	_add_classrooms(hall_interior)
+	var hall_interior := _add_door_and_interior(body, "school_hall", _ooo_hq_pos)
+	_add_offices(hall_interior)
+
+
+# --- Presidential Palace --------------------------------------------------------
+## Landmark for Act III onward (Joseph becomes president) -- there was
+## nowhere in the world representing this before. Placed in the open
+## corridor between the downtown (x up to 100) and industrial_east (x from
+## 170) zones (see _define_zones) rather than a computed clearance like OOO
+## HQ's, since that gap is already clear of both zones' structure grids by
+## design. Larger footprint + an off-white/marble color read as "grand
+## civic building" against the rest of the low-poly palette without needing
+## any new art. Reuses the "school_hall" interior shape (see the OOO HQ
+## comment above for why reusing an existing kind string is fine here).
+func _build_presidential_palace() -> void:
+	_palace_pos = Vector3(135, 0, -140)
+
+	var body := StaticBody3D.new()
+	var size := Vector3(40, 14, 30)
+	var color := Color(0.88, 0.86, 0.78)
+	var door_h := _build_door_shell(body, size, color)
+	_add_roof_cap(body, size, color)
+	_apply_facade(body, size, "civic")
+
+	body.set_meta("kind", "presidential_palace")
+	body.set_meta("size", size)
+	body.set_meta("door_h", door_h)
+	body.position = _palace_pos
+	add_child(body)
+
+	_add_door_and_interior(body, "school_hall", _palace_pos)
 
 
 func _place_landmark() -> void:
@@ -711,25 +751,29 @@ func _place_landmark() -> void:
 			holder.add_child(inst)
 
 
-func _add_classrooms(hall_interior: Node3D) -> void:
-	var subjects := [
-		{"name": "Maths", "teacher": "Mr. Aldridge", "color": Color(0.2, 0.4, 0.8)},
-		{"name": "English", "teacher": "Ms. Bellamy", "color": Color(0.6, 0.2, 0.5)},
-		{"name": "Physics", "teacher": "Dr. Corvin", "color": Color(0.3, 0.6, 0.3)},
-		{"name": "Chemistry", "teacher": "Dr. Osei", "color": Color(0.8, 0.5, 0.1)},
-		{"name": "Biology", "teacher": "Ms. Whitfield", "color": Color(0.5, 0.7, 0.2)},
+## Same room layout the school's classrooms used ("school_classroom" kind
+## string is just an internal geometry key -- see the OOO HQ header comment
+## above), populated with department heads instead of teachers. This is the
+## building Joseph gets laid off from in the Prologue.
+func _add_offices(hall_interior: Node3D) -> void:
+	var departments := [
+		{"name": "Contracts", "head": "Ms. Aldridge", "color": Color(0.2, 0.4, 0.8)},
+		{"name": "Legal", "head": "Mr. Bellamy", "color": Color(0.6, 0.2, 0.5)},
+		{"name": "Finance", "head": "Dr. Corvin", "color": Color(0.3, 0.6, 0.3)},
+		{"name": "Compliance", "head": "Dr. Osei", "color": Color(0.8, 0.5, 0.1)},
+		{"name": "Public Relations", "head": "Ms. Whitfield", "color": Color(0.5, 0.7, 0.2)},
 	]
 	var hall_size := Vector2(20, 8)
-	var count := subjects.size()
+	var count := departments.size()
 	var spacing := hall_size.x / float(count + 1)
 	var start_x := -hall_size.x / 2.0 + spacing
 
 	for i in range(count):
-		var subj: Dictionary = subjects[i]
+		var dept: Dictionary = departments[i]
 		var door_x: float = start_x + i * spacing
 
 		var hall_door := Area3D.new()
-		hall_door.name = "ClassroomDoor_%s" % subj["name"]
+		hall_door.name = "OfficeDoor_%s" % dept["name"]
 		var col := CollisionShape3D.new()
 		var shape := BoxShape3D.new()
 		shape.size = Vector3(1.5, 2, 1.0)
@@ -740,28 +784,28 @@ func _add_classrooms(hall_interior: Node3D) -> void:
 		hall_interior.add_child(hall_door)
 
 		_interior_counter += 1
-		var classroom := InteriorBuilder.build_interior("school_classroom")
+		var office := InteriorBuilder.build_interior("school_classroom")
 		var offset := Vector3(0, 0, 5000 + _interior_counter * 60.0)
-		classroom.position = offset
-		add_child(classroom)
+		office.position = offset
+		add_child(office)
 
-		var classroom_spawn := offset + Vector3(0, 1, 3)
+		var office_spawn := offset + Vector3(0, 1, 3)
 		var hall_spawn := hall_interior.position + Vector3(door_x, 1, -hall_size.y / 2.0 + 1.5)
 
 		hall_door.body_entered.connect(func(body):
 			if body.is_in_group("player"):
-				body.teleport_to(classroom_spawn)
+				body.teleport_to(office_spawn)
 		)
-		var exit_door: Area3D = classroom.get_node("ExitDoor")
+		var exit_door: Area3D = office.get_node("ExitDoor")
 		exit_door.body_entered.connect(func(body):
 			if body.is_in_group("player"):
 				body.teleport_to(hall_spawn)
 		)
 
-		_spawn_teacher(classroom, Vector3(0, 0, -4.8), subj["color"], "%s\n%s" % [subj["teacher"], subj["name"]])
+		_spawn_desk_worker(office, Vector3(0, 0, -4.8), dept["color"], "%s\n%s" % [dept["head"], dept["name"]])
 
 
-func _spawn_teacher(parent: Node3D, local_pos: Vector3, color: Color, label_text: String) -> void:
+func _spawn_desk_worker(parent: Node3D, local_pos: Vector3, color: Color, label_text: String) -> void:
 	var holder := Node3D.new()
 	holder.position = local_pos
 	parent.add_child(holder)
@@ -869,6 +913,203 @@ func _spawn_player() -> void:
 	add_child(hud)
 	hud.setup(player)
 
+	if SaveManager.load_state():
+		if StoryManager.has_flag("story_complete"):
+			_show_ending_screen()
+		else:
+			_start_from_act(StoryManager.current_act)
+		_maybe_spawn_protesters()  # act_changed doesn't fire for a loaded act (see SaveManager)
+	else:
+		_maybe_play_prologue()
+
+
+## Resumes at the *start* of whichever act was in progress at the last
+## save (see SaveManager's header comment for why that's the checkpoint
+## granularity, not the exact dialogue line).
+func _start_from_act(act: int) -> void:
+	match act:
+		StoryManager.Act.PROLOGUE:
+			_maybe_play_prologue()
+		StoryManager.Act.CANDIDATE:
+			_play_dialogue(StoryContent.act1_candidate(), _on_act1_finished)
+		StoryManager.Act.RISE:
+			_play_dialogue(StoryContent.act2_rise(), _on_act2_finished)
+		StoryManager.Act.PRESIDENT:
+			_play_dialogue(StoryContent.act3_president(), _on_act3_finished)
+		StoryManager.Act.SHADOW_GOVERNMENT:
+			_play_dialogue(StoryContent.act4_shadow_government(), _on_act4_finished)
+		StoryManager.Act.MAFIA:
+			_play_dialogue(StoryContent.act5_mafia(), _on_act5_finished)
+		StoryManager.Act.MIRROR:
+			_play_dialogue(StoryContent.act6_mirror(), _on_act6_finished)
+		StoryManager.Act.COLLAPSE:
+			_play_dialogue(StoryContent.act7_collapse(), _on_act7_finished)
+		StoryManager.Act.FINAL:
+			_play_dialogue(StoryContent.final_act(), _on_story_finished)
+
+
+## Runs once per game: the fixed-narration opening (layoff, the TV scene,
+## the friend's question) that sets up Act I. Gated on a flag rather than
+## on StoryManager.current_act, since current_act itself only advances once
+## this finishes -- checking the act here would replay it every _ready().
+func _maybe_play_prologue() -> void:
+	if StoryManager.has_flag("prologue_played"):
+		return
+	StoryManager.set_flag("prologue_played", true)
+	_play_dialogue(StoryContent.prologue(), _on_prologue_finished)
+
+
+func _on_prologue_finished() -> void:
+	StoryManager.advance_act(StoryManager.Act.CANDIDATE)
+	SaveManager.save_state()
+	_play_dialogue(StoryContent.act1_candidate(), _on_act1_finished)
+
+
+func _on_act1_finished() -> void:
+	StoryManager.advance_act(StoryManager.Act.RISE)
+	SaveManager.save_state()
+	_play_dialogue(StoryContent.act2_rise(), _on_act2_finished)
+
+
+## Act IV (Shadow Government) has no authored content yet -- player
+## free-roams Nova Terra from here until it's built. Advancing the act now
+## (rather than waiting for that content) keeps StoryManager.current_act
+## accurate for anything already reading it (HUD, NPC reactions later) in
+## the meantime.
+func _on_act2_finished() -> void:
+	StoryManager.advance_act(StoryManager.Act.PRESIDENT)
+	SaveManager.save_state()
+	_play_dialogue(StoryContent.act3_president(), _on_act3_finished)
+
+
+## Act IV (Shadow Government) starts here -- see StoryContent.act4_shadow_government
+## for why its network-dismantle option still converges into the same path.
+func _on_act3_finished() -> void:
+	StoryManager.advance_act(StoryManager.Act.SHADOW_GOVERNMENT)
+	SaveManager.save_state()
+	_play_dialogue(StoryContent.act4_shadow_government(), _on_act4_finished)
+
+
+func _on_act4_finished() -> void:
+	StoryManager.advance_act(StoryManager.Act.MAFIA)
+	SaveManager.save_state()
+	_play_dialogue(StoryContent.act5_mafia(), _on_act5_finished)
+
+
+func _on_act5_finished() -> void:
+	StoryManager.advance_act(StoryManager.Act.MIRROR)
+	SaveManager.save_state()
+	_play_dialogue(StoryContent.act6_mirror(), _on_act6_finished)
+
+
+func _on_act6_finished() -> void:
+	StoryManager.advance_act(StoryManager.Act.COLLAPSE)
+	SaveManager.save_state()
+	_play_dialogue(StoryContent.act7_collapse(), _on_act7_finished)
+
+
+## The Final Act's text depends on StoryManager.corruption_tier() at the
+## moment it's built (see StoryContent.final_act), so it's built here,
+## right before playing -- not earlier, when the corruption total wasn't
+## final yet.
+func _on_act7_finished() -> void:
+	StoryManager.advance_act(StoryManager.Act.FINAL)
+	SaveManager.save_state()
+	_play_dialogue(StoryContent.final_act(), _on_story_finished)
+
+
+func _on_story_finished() -> void:
+	SaveManager.save_state()
+	_show_ending_screen()
+
+
+func _show_ending_screen() -> void:
+	var screen := EndingScreen.new()
+	add_child(screen)
+	screen.setup(StoryManager.corruption_tier())
+
+
+func _on_story_act_changed(_new_act: int, _old_act: int) -> void:
+	_maybe_spawn_protesters()
+
+
+## World-state reaction to Act VII (Collapse): a cluster of protester figures
+## outside the Presidential Palace -- the one place in the game a story
+## beat visibly changes the open world rather than just playing a cutscene.
+## Guarded by _protesters_spawned rather than checking "are they already
+## there" some other way, since this can be reached from two different
+## paths in the same session (see _spawn_player's SaveManager.load_state
+## branch) that could otherwise both fire.
+var _protesters_spawned := false
+
+const PROTEST_SIGNS := ["RESIGN", "NO MORE LIES", "WE TRUSTED YOU", "ENOUGH", "WHO PAID FOR THIS?", "JUSTICE NOW"]
+
+func _maybe_spawn_protesters() -> void:
+	if _protesters_spawned or StoryManager.current_act < StoryManager.Act.COLLAPSE:
+		return
+	_protesters_spawned = true
+
+	var front := _palace_pos + Vector3(0, 0, 20)
+	var count := 8
+	for i in range(count):
+		var angle := (float(i) / count) * TAU
+		var offset := Vector3(cos(angle), 0, sin(angle)) * randf_range(4.0, 9.0)
+		_spawn_protester(front + offset, PROTEST_SIGNS[i % PROTEST_SIGNS.size()])
+
+
+## Deliberately NOT added to the "npc" group -- Player._try_interact calls
+## get_ambient_line() on anything in that group, which these figures (plain
+## Node3D, not NPC.gd instances) don't implement. Purely a visual reaction
+## for now, not another interaction target.
+func _spawn_protester(pos: Vector3, sign_text: String) -> void:
+	var holder := Node3D.new()
+	holder.position = pos
+	add_child(holder)
+
+	var mesh_inst := MeshInstance3D.new()
+	var mesh := CapsuleMesh.new()
+	mesh.radius = 0.35
+	mesh.height = 1.6
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.55, 0.15, 0.1)  # angry red -- distinct from any ordinary NPC/department color
+	mesh.material = mat
+	mesh_inst.mesh = mesh
+	mesh_inst.position.y = 0.9
+	holder.add_child(mesh_inst)
+
+	var placard := MeshInstance3D.new()
+	var pmesh := BoxMesh.new()
+	pmesh.size = Vector3(0.9, 0.5, 0.05)
+	var pmat := StandardMaterial3D.new()
+	pmat.albedo_color = Color(0.9, 0.85, 0.7)
+	pmesh.material = pmat
+	placard.mesh = pmesh
+	placard.position = Vector3(0, 1.9, 0)
+	holder.add_child(placard)
+
+	var label := Label3D.new()
+	label.text = sign_text
+	label.position = Vector3(0, 1.9, 0.04)
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.font_size = 20
+	label.modulate = Color(0.1, 0.1, 0.1)
+	holder.add_child(label)
+
+
+## Shared box+runner plumbing for every story beat -- both are scene-local
+## (see DialogueBox's class comment) and free themselves once `tree` ends.
+func _play_dialogue(tree: DialogueTree, on_finished: Callable) -> void:
+	var box := DialogueBox.new()
+	add_child(box)
+	var runner := DialogueRunner.new()
+	add_child(runner)
+	runner.finished.connect(func():
+		box.queue_free()
+		runner.queue_free()
+		on_finished.call()
+	)
+	runner.play(tree, box)
+
 
 # --- District entrance signage (art/decals) -----------------------------------
 
@@ -907,7 +1148,7 @@ func _place_district_signs() -> void:
 	# A neutral "Welcome to Nova Terra" landmark near the school -- itself a
 	# civic building not tied to any one commercial district -- rather than
 	# favoring one district's sign over the others.
-	_place_sign(_school_pos + Vector3(-22, 0, 4), Vector3(1, 0, 0), "nova_terra_neutral_sign")
+	_place_sign(_ooo_hq_pos + Vector3(-22, 0, 4), Vector3(1, 0, 0), "nova_terra_neutral_sign")
 
 
 ## A simple post + double-sided textured board. `facing_dir` is the guessed

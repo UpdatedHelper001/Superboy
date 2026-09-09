@@ -23,6 +23,10 @@ const JUMP_RADIUS := 42.0
 const JUMP_GRAB_SLOP := 1.4
 const JUMP_MARGIN := Vector2(90, 130)
 
+const TALK_RADIUS := 34.0
+const TALK_GRAB_SLOP := 1.4
+const TALK_MARGIN := Vector2(90, 210)  # stacked above the jump button
+
 const LOOK_REGION_FRACTION := 0.35  # touches right of this fraction of the screen width can look around
 
 var _joy_touch := -1
@@ -35,6 +39,9 @@ var _look_region_x := 0.0
 var _jump_touch := -1
 var _jump_center := Vector2.ZERO
 
+var _talk_touch := -1
+var _talk_center := Vector2.ZERO
+
 
 ## Minimal translucent circle, drawn directly (no texture assets needed).
 class _Circle extends Control:
@@ -46,6 +53,8 @@ class _Circle extends Control:
 
 var _joy_base: _Circle
 var _jump_circle: _Circle
+var _talk_circle: _Circle
+var _talk_label: Label
 
 
 func _ready() -> void:
@@ -53,6 +62,13 @@ func _ready() -> void:
 	_joy_base = _add_circle(JOY_RADIUS, Color(1, 1, 1, 0.15))
 	_joy_knob = _add_circle(JOY_KNOB_RADIUS, Color(1, 1, 1, 0.35))
 	_jump_circle = _add_circle(JUMP_RADIUS, Color(1, 1, 1, 0.3))
+	_talk_circle = _add_circle(TALK_RADIUS, Color(1, 1, 1, 0.3))
+	_talk_label = Label.new()
+	_talk_label.text = "Talk"
+	_talk_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_talk_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+	_talk_label.add_theme_font_size_override("font_size", 13)
+	add_child(_talk_label)
 	# The viewport isn't guaranteed to already report its final on-screen
 	# size on the very first frame (e.g. while the window is still being set
 	# up), so lay out now AND whenever the size changes, instead of trusting
@@ -66,9 +82,12 @@ func _relayout() -> void:
 	_look_region_x = vp_size.x * LOOK_REGION_FRACTION
 	_joy_center = Vector2(JOY_MARGIN.x, vp_size.y - JOY_MARGIN.y)
 	_jump_center = Vector2(vp_size.x - JUMP_MARGIN.x, vp_size.y - JUMP_MARGIN.y)
+	_talk_center = Vector2(vp_size.x - TALK_MARGIN.x, vp_size.y - TALK_MARGIN.y)
 	_joy_base.position = _joy_center
 	_joy_knob.position = _joy_center
 	_jump_circle.position = _jump_center
+	_talk_circle.position = _talk_center
+	_talk_label.position = _talk_center - Vector2(16, 8)
 
 
 func _add_circle(radius: float, color: Color) -> _Circle:
@@ -103,6 +122,9 @@ func _touch_start(index: int, pos: Vector2) -> void:
 	elif _jump_touch == -1 and pos.distance_to(_jump_center) <= JUMP_RADIUS * JUMP_GRAB_SLOP:
 		_jump_touch = index
 		Input.action_press("ui_accept")
+	elif _talk_touch == -1 and pos.distance_to(_talk_center) <= TALK_RADIUS * TALK_GRAB_SLOP:
+		_talk_touch = index
+		Input.action_press("interact")
 	elif _look_touch == -1 and pos.x >= _look_region_x:
 		_look_touch = index
 
@@ -115,6 +137,9 @@ func _touch_end(index: int) -> void:
 	if index == _jump_touch:
 		_jump_touch = -1
 		Input.action_release("ui_accept")
+	if index == _talk_touch:
+		_talk_touch = -1
+		Input.action_release("interact")
 	if index == _look_touch:
 		_look_touch = -1
 
@@ -138,8 +163,10 @@ func _reset_all() -> void:
 	_joy_touch = -1
 	_look_touch = -1
 	_jump_touch = -1
+	_talk_touch = -1
 	move_vector = Vector2.ZERO
 	Input.action_release("ui_accept")
+	Input.action_release("interact")
 	if _joy_knob:
 		_joy_knob.position = _joy_center
 

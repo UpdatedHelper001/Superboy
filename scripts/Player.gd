@@ -1,6 +1,12 @@
 extends CharacterBody3D
-## Joseph — the playable character. A high-school boy exploring the open
-## world, going to school, and (later) picking up missions/mini-games.
+## Joseph — the playable character in "Joseph: The Man He Hated". An adult
+## (laid-off OOO Corporation employee turned politician turned president),
+## not the earlier high-school-boy concept -- see StoryManager for the
+## narrative arc this drives. Body proportions/rig are unchanged from that
+## earlier concept (same low-poly CharacterRig build), only the palette
+## below and the framing have moved off "schoolboy"; a proper adult
+## wardrobe (suit era vs. campaign-trail era vs. presidential era) is art
+## work for later, not a geometry change.
 
 signal health_changed(current: float, max_hp: float)
 
@@ -14,6 +20,7 @@ const MAX_HEALTH := 100.0
 const FALL_DAMAGE_MIN_SPEED := 10.0  # vertical speed (m/s) before landings start to hurt
 const FALL_DAMAGE_SCALE := 4.0       # damage per m/s of speed above the threshold
 const RESPAWN_INVULN_TIME := 1.5     # seconds of immunity right after a respawn
+const INTERACT_RANGE := 3.0
 
 var _spring_arm: SpringArm3D
 var _camera: Camera3D
@@ -27,6 +34,7 @@ var health := MAX_HEALTH
 var home_position: Vector3
 var _invuln_timer := 0.0
 var _is_dying := false
+var _talk_box: DialogueBox = null
 
 
 func _ready() -> void:
@@ -52,15 +60,18 @@ func _build_visual() -> void:
 	col.position.y = 0.85
 	add_child(col)
 
-	# Low-poly "Joseph" body: articulated legs/arms + torso + head, school-uniform colors.
+	# Low-poly "Joseph" body: articulated legs/arms + torso + head. Palette
+	# is a plain dark office/campaign look (charcoal jacket, dark trousers)
+	# rather than the earlier schoolboy blue -- a placeholder pass, not
+	# final art; per-act wardrobe changes come later.
 	_rig.leg_swing_max = 0.7
 	_rig.arm_swing_max = 0.55
 	_rig.anim_speed = 6.5
 	_rig.build(self, {
 		"model_path": "res://art/models/MainCharacter_Default.glb",
-		"leg_color": Color(0.2, 0.2, 0.25),
-		"arm_color": Color(0.15, 0.25, 0.55),
-		"torso_color": Color(0.15, 0.25, 0.55),
+		"leg_color": Color(0.13, 0.13, 0.15),
+		"arm_color": Color(0.18, 0.18, 0.22),
+		"torso_color": Color(0.18, 0.18, 0.22),
 		"head_color": Color(0.85, 0.7, 0.55),
 		# Fallback values if the model fails to load:
 		"hip_x": 0.16, "hip_y": 0.9, "leg_len": 0.9, "leg_r": 0.12,
@@ -69,22 +80,6 @@ func _build_visual() -> void:
 		"head_r": 0.25, "head_y": 1.95,
 		"hair_color": Color(0.25, 0.16, 0.1),
 	})
-	_add_backpack()
-
-
-## A small backpack on Joseph's back so he reads as the protagonist among a
-## crowd of NPCs sharing the same low-poly rig. Positioned at +Z: -Z is
-## "forward" (the direction look_at()/movement faces), so +Z is the back.
-func _add_backpack() -> void:
-	var pack := MeshInstance3D.new()
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(0.32, 0.4, 0.18)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.8, 0.2, 0.15)
-	mesh.material = mat
-	pack.mesh = mesh
-	pack.position = Vector3(0, 1.35, 0.28)
-	add_child(pack)
 
 
 func _build_camera_rig() -> void:
@@ -111,6 +106,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if Input.is_action_just_pressed("interact"):
+		_try_interact()
+
 	if _invuln_timer > 0.0:
 		_invuln_timer = max(_invuln_timer - delta, 0.0)
 
@@ -199,3 +197,29 @@ func _die() -> void:
 func teleport_to(pos: Vector3) -> void:
 	global_position = pos
 	velocity = Vector3.ZERO
+
+
+## Nearest-NPC-in-range "talk" interaction. Ambient NPCs only have one flat
+## line each (NPC.get_ambient_line -- see its const dictionaries), so this
+## shows it directly through a one-off DialogueBox rather than spinning up
+## a full DialogueRunner/DialogueTree for a single line with no choices.
+func _try_interact() -> void:
+	if _talk_box != null:
+		return
+	var nearest: Node3D = null
+	var nearest_dist := INTERACT_RANGE
+	for npc in get_tree().get_nodes_in_group("npc"):
+		var d: float = global_position.distance_to(npc.global_position)
+		if d <= nearest_dist:
+			nearest_dist = d
+			nearest = npc
+	if nearest == null:
+		return
+
+	_talk_box = DialogueBox.new()
+	add_child(_talk_box)
+	_talk_box.show_line("Citizen", nearest.get_ambient_line(), [])
+	_talk_box.continue_pressed.connect(func():
+		_talk_box.queue_free()
+		_talk_box = null
+	)

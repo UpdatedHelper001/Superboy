@@ -71,7 +71,74 @@ const NPC_MODELS := [
 ]
 
 
-func _ready() -> void:
+## Generic citizen reactions to how Joseph's story is unfolding, keyed by
+## StoryManager.current_act. These are throwaway ambient NPCs, not named
+## characters, so one flat pool per act (not a branching DialogueTree) is
+## enough -- get_ambient_line() just picks one to show in a one-off
+## DialogueBox (see Player._interact).
+const AMBIENT_LINES := {
+	StoryManager.Act.PROLOGUE: [
+		"Another day, another headline about corruption.",
+		"You hear OOO's cutting people? Heard they lost some good ones.",
+	],
+	StoryManager.Act.CANDIDATE: [
+		"That new candidate seems honest, for once.",
+		"Half these politicians are bought and paid for. Maybe not this one.",
+	],
+	StoryManager.Act.RISE: [
+		"He's actually keeping his promises so far.",
+		"OOO lost another contract because of him. Good.",
+	],
+	StoryManager.Act.PRESIDENT: [
+		"President's got the whole country talking.",
+		"Things have gotten better around here, I'll admit.",
+	],
+	StoryManager.Act.SHADOW_GOVERNMENT: [
+		"Funny how his problems just... disappear lately.",
+		"You didn't hear this from me, but he's got friends in ugly places now.",
+	],
+	StoryManager.Act.MAFIA: [
+		"They're calling him \"The Boss\" now. Never thought I'd hear that about him.",
+		"Contracts keep going to the same people. Wonder why.",
+	],
+	StoryManager.Act.MIRROR: [
+		"Something's changed about him. Can't put my finger on it.",
+		"He used to answer questions. Not anymore.",
+	],
+	StoryManager.Act.FINAL: [
+		"It's over, isn't it?",
+		"History's going to remember this however it wants to.",
+	],
+}
+
+## Act VII citizens react to how corrupt Joseph actually became, not just
+## that the system is collapsing -- see StoryManager.corruption_tier.
+const COLLAPSE_LINES_BY_TIER := {
+	StoryManager.CorruptionTier.REFORMER: [
+		"I still think he tried harder than most of them.",
+		"It's falling apart, but I don't think he's the worst of them.",
+	],
+	StoryManager.CorruptionTier.COMPROMISED: [
+		"I don't know what to believe anymore.",
+		"He did some good. He did some bad. It's complicated.",
+	],
+	StoryManager.CorruptionTier.TYRANT: [
+		"He needs to go. Today.",
+		"We're done being lied to.",
+	],
+}
+
+
+func get_ambient_line() -> String:
+	var pool: Array
+	if StoryManager.current_act == StoryManager.Act.COLLAPSE:
+		pool = COLLAPSE_LINES_BY_TIER[StoryManager.corruption_tier()]
+	else:
+		pool = AMBIENT_LINES.get(StoryManager.current_act, ["..."])
+	return pool.pick_random()
+
+
+
 	_elapsed = randf() * day_length
 	add_to_group("npc")
 	_build_visual()

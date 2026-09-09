@@ -14,6 +14,9 @@ const DAY_START_HOUR := 22.0  # phase 0.0 = 10 PM, lining up with NPCs starting 
 var _player: CharacterBody3D
 var _map_camera: Camera3D
 var _health_fill: ColorRect
+var _corruption_fill: ColorRect
+var _corruption_label: Label
+var _act_label: Label
 var _clock_label: Label
 var _world_elapsed := 0.0
 var _day_count := 1
@@ -24,9 +27,15 @@ func setup(player: CharacterBody3D) -> void:
 	_player = player
 	_build_minimap()
 	_build_health_bar()
+	_build_corruption_bar()
 	_build_clock()
+	_build_act_label()
 	player.health_changed.connect(_on_health_changed)
 	_on_health_changed(player.health, 100.0)
+	StoryManager.corruption_changed.connect(_on_corruption_changed)
+	StoryManager.act_changed.connect(_on_act_changed)
+	_on_corruption_changed(StoryManager.corruption, 0)
+	_on_act_changed(StoryManager.current_act, StoryManager.current_act)
 
 
 func _build_minimap() -> void:
@@ -101,6 +110,42 @@ func _on_health_changed(current: float, max_hp: float) -> void:
 	_health_fill.color = Color(0.8, 0.15, 0.15).lerp(Color(0.2, 0.8, 0.3), ratio)
 
 
+## "Integrity" reads the same 0-100 value as StoryManager.corruption, just
+## inverted in framing (full bar = clean) so a *higher* fill still means
+## "better", matching the health bar just above it rather than needing the
+## player to learn "low bar is good" for this one meter only.
+func _build_corruption_bar() -> void:
+	var bg := Panel.new()
+	bg.position = Vector2(16, 16 + MAP_SIZE + 8.0 + 18.0 + 6.0)
+	bg.size = Vector2(MAP_SIZE, 18)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0, 0, 0, 0.5)
+	style.set_corner_radius_all(4)
+	bg.add_theme_stylebox_override("panel", style)
+	add_child(bg)
+
+	_corruption_fill = ColorRect.new()
+	_corruption_fill.color = Color(0.7, 0.6, 0.2)
+	_corruption_fill.position = Vector2(2, 2)
+	_corruption_fill.size = Vector2(BAR_WIDTH, 14)
+	bg.add_child(_corruption_fill)
+
+	_corruption_label = Label.new()
+	_corruption_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_corruption_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_corruption_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_corruption_label.add_theme_font_size_override("font_size", 11)
+	_corruption_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.9))
+	bg.add_child(_corruption_label)
+
+
+func _on_corruption_changed(new_value: int, _delta: int) -> void:
+	var ratio: float = 1.0 - clamp(new_value / 100.0, 0.0, 1.0)
+	_corruption_fill.size.x = BAR_WIDTH * ratio
+	_corruption_fill.color = Color(0.8, 0.15, 0.15).lerp(Color(0.2, 0.7, 0.5), ratio)
+	_corruption_label.text = "Integrity: %d%%" % int(ratio * 100.0)
+
+
 ## Top-right panel showing an in-world clock, mirroring the minimap panel's
 ## style. Runs on its own independent timer (not synced to any one NPC's
 ## staggered schedule) over the same DAY_LENGTH every NPC's day/night cycle
@@ -141,6 +186,25 @@ func _update_clock_label() -> void:
 	if hour12 == 0:
 		hour12 = 12
 	_clock_label.text = "Day %d\n%02d:%02d %s" % [_day_count, hour12, minute, am_pm]
+
+
+## Small unobtrusive label under the clock naming the current story act
+## (StoryManager.ACT_NAMES), so a player who hasn't been tracking dialogue
+## closely can still tell the story has moved on.
+func _build_act_label() -> void:
+	_act_label = Label.new()
+	_act_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_act_label.position = Vector2(-16.0 - CLOCK_WIDTH, 16.0 + CLOCK_HEIGHT + 4.0)
+	_act_label.size = Vector2(CLOCK_WIDTH, 20)
+	_act_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_act_label.add_theme_font_size_override("font_size", 12)
+	_act_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.75))
+	add_child(_act_label)
+
+
+func _on_act_changed(new_act: int, _old_act: int) -> void:
+	if _act_label:
+		_act_label.text = StoryManager.ACT_NAMES.get(new_act, "")
 
 
 func _process(delta: float) -> void:
